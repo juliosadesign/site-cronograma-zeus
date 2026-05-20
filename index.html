@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cronograma Zeus | Design e Marketing</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo-frame" id="logoFrame">
+          <img id="logoPreview" src="assets/logo-zeus-placeholder.svg" alt="Logo Zeus" />
+        </div>
+        <div>
+          <p class="eyebrow">Equipe Zeus</p>
+          <h1>Cronograma</h1>
+          <span>Design • Marketing • Ícaros</span>
+        </div>
+      </div>
+
+      <label class="upload-logo">
+        <input type="file" id="logoInput" accept="image/*" />
+        <span>Trocar logo</span>
+      </label>
+
+      <nav class="nav">
+        <a href="#dashboard" class="active">Dashboard</a>
+        <a href="#calendario">Calendário</a>
+        <a href="#tarefas">Tarefas</a>
+        <a href="#campanhas">Rifas</a>
+        <a href="#equipe">Equipe</a>
+        <a href="#explicacao">Explicação</a>
+      </nav>
+
+      <div class="side-note">
+        <strong>Regra do sistema</strong>
+        <p>A prioridade é recalculada pela data simulada/atual. Se o prazo interno passou e a tarefa não foi concluída, ela aparece como atrasada.</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="hero" id="dashboard">
+        <div>
+          <p class="eyebrow">Sistema visual para apresentação e controle</p>
+          <h2>Planejamento Zeus — Maio a Julho</h2>
+          <p class="hero-text">
+            Este site transforma o fluxograma e o cronograma da Zeus em um painel visual com calendário,
+            responsáveis, campanhas de rifa e alerta automático de atraso.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <label>
+            Data de controle
+            <input type="date" id="dataControle" />
+          </label>
+          <button id="btnHoje">Usar hoje</button>
+          <button id="btnExportar">Exportar status</button>
+        </div>
+      </header>
+
+      <section class="cards-grid" aria-label="Resumo do cronograma">
+        <article class="metric-card">
+          <span>Total de tarefas</span>
+          <strong id="totalTarefas">0</strong>
+          <small>Inclui posts, rifas, marca e datas</small>
+        </article>
+        <article class="metric-card danger">
+          <span>Atrasadas</span>
+          <strong id="totalAtrasadas">0</strong>
+          <small>Prazo interno vencido</small>
+        </article>
+        <article class="metric-card warning">
+          <span>Urgentes</span>
+          <strong id="totalUrgentes">0</strong>
+          <small>Até 2 dias do prazo</small>
+        </article>
+        <article class="metric-card">
+          <span>Horas previstas</span>
+          <strong id="totalHoras">0h</strong>
+          <small>Carga geral estimada</small>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Resumo por área</p>
+            <h3>Distribuição do trabalho</h3>
+          </div>
+          <span class="pill">Zeus • Ícaros • Marketing</span>
+        </div>
+        <div id="macroResumo" class="bar-list"></div>
+      </section>
+
+      <section class="panel" id="calendario">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Visão por data</p>
+            <h3>Calendário de entregas e postagens</h3>
+          </div>
+          <span class="pill">17/05 a 31/07</span>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+
+      <section class="panel" id="tarefas">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Controle operacional</p>
+            <h3>Lista de tarefas</h3>
+          </div>
+          <span class="pill" id="contadorFiltro">0 itens</span>
+        </div>
+
+        <div class="filters">
+          <input type="search" id="busca" placeholder="Buscar por tarefa, campanha ou observação..." />
+          <select id="filtroMacro">
+            <option value="">Todas as áreas</option>
+          </select>
+          <select id="filtroResponsavel">
+            <option value="">Todos os responsáveis</option>
+          </select>
+          <select id="filtroStatus">
+            <option value="">Todos os status</option>
+          </select>
+          <select id="filtroPrioridade">
+            <option value="">Todas as prioridades</option>
+            <option value="P0">P0 - Atrasado</option>
+            <option value="P1">P1 - Alta/Urgente</option>
+            <option value="P2">P2 - Média/Atenção</option>
+            <option value="P3">P3 - Baixa</option>
+          </select>
+          <button id="limparFiltros">Limpar filtros</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Área</th>
+                <th>Tarefa/Postagem</th>
+                <th>Campanha</th>
+                <th>Responsável</th>
+                <th>Prazo</th>
+                <th>Prioridade</th>
+                <th>Status</th>
+                <th>Tempo</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaTarefas"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" id="campanhas">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Campanhas separadas</p>
+            <h3>Rifas e sorteios</h3>
+          </div>
+          <span class="pill">Subtemas organizados</span>
+        </div>
+        <div id="campaignCards" class="campaign-grid"></div>
+      </section>
+
+      <section class="panel" id="equipe">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Divisão de equipe</p>
+            <h3>Responsáveis e carga estimada</h3>
+          </div>
+          <span class="pill">Júlio • Raíssa • Renalli</span>
+        </div>
+        <div id="teamCards" class="team-grid"></div>
+      </section>
+
+      <section class="panel explanation" id="explicacao">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Para apresentar o projeto</p>
+            <h3>Texto de explicação do fluxograma e do sistema</h3>
+          </div>
+        </div>
+        <p>
+          O fluxograma parte da raiz <strong>Design e Marketing Zeus</strong> e divide o projeto em quatro frentes:
+          <strong>Marca Ícaros</strong>, <strong>Posts Genéricos</strong>, <strong>Rifas/Sorteios</strong> e
+          <strong>Datas Importantes</strong>. Cada frente foi transformada em tarefas práticas, com data, canal,
+          responsável, apoio, prioridade, complexidade e tempo estimado.
+        </p>
+        <p>
+          O sistema foi pensado para uma equipe pequena: Júlio fica com as peças mais complexas e com a identidade
+          Ícaros; Raíssa apoia aprovações, institucional e representatividade; Renalli assume stories simples,
+          reforços de rifa e engajamento. As rifas aparecem separadas por campanha para evitar mistura de subtemas,
+          como “última chamada da rifa” sem indicar a qual rifa ela pertence.
+        </p>
+        <p>
+          A prioridade dinâmica ajuda no controle: quanto mais perto do prazo interno, maior o alerta. Se a data passar
+          e a tarefa não estiver como <strong>Publicado</strong> ou <strong>Concluído</strong>, o sistema marca como
+          <strong>P0 - Atrasado</strong>. Assim, o cronograma vira um painel de acompanhamento real e não apenas uma
+          lista parada.
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="dados.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
