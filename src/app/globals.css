@@ -1,26 +1,129 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --canvas: #f7f8fa;
+  --surface-1: #ffffff;
+  --surface-2: #eef1f6;
+  --hairline: #e2e6ee;
+  --hairline-strong: #cbd2df;
+  --ink: #0f172a;
+  --ink-muted: #334155;
+  --ink-subtle: #64748b;
+  --zeus-blue: #2563eb;
+  --zeus-blue-soft: #0ea5e9;
+  --zeus-gold: #d97706;
+  --zeus-gold-bright: #f59e0b;
+  --ease-ui: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root.dark {
+  --canvas: #0b0c10;
+  --surface-1: #12141a;
+  --surface-2: #181b23;
+  --hairline: #242834;
+  --hairline-strong: #323848;
+  --ink: #f8fafc;
+  --ink-muted: #cbd5e1;
+  --ink-subtle: #828ca0;
+  --zeus-blue: #3b82f6;
+  --zeus-blue-soft: #38bdf8;
+  --zeus-gold: #f59e0b;
+  --zeus-gold-bright: #fbbf24;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html,
+body {
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+}
+
+.zeus-card {
+  background-color: var(--surface-1);
+  border: 1px solid var(--hairline);
+}
+
+.zeus-surface-2 {
+  background-color: var(--surface-2);
+}
+
+.zeus-border {
+  border-color: var(--hairline);
+}
+
+.zeus-nav-active {
+  background-color: var(--surface-2);
+  border-color: var(--hairline-strong);
+  box-shadow: inset 2.5px 0 0 0 var(--zeus-blue);
+}
+
+@keyframes zeusTabEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes zeusBarGrow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.zeus-tab-enter {
+  animation: zeusTabEnter 320ms var(--ease-enter) both;
+}
+
+.zeus-bar-grow {
+  transform-origin: bottom;
+  animation: zeusBarGrow 460ms var(--ease-enter) both;
+}
+
+.zeus-btn {
+  transition: transform 150ms var(--ease-ui), background-color 150ms var(--ease-ui), border-color 150ms var(--ease-ui), opacity 150ms var(--ease-ui);
+}
+
+.zeus-card-interactive {
+  transition: transform 180ms var(--ease-ui), border-color 180ms var(--ease-ui), background-color 180ms var(--ease-ui);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .zeus-btn:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+  .zeus-btn:not(:disabled):active {
+    transform: translateY(1px) scale(0.985);
+    transition-duration: 90ms;
+  }
+  .zeus-card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: var(--hairline-strong);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zeus-tab-enter,
+  .zeus-bar-grow {
+    animation: none !important;
+  }
+  .zeus-btn,
+  .zeus-card-interactive {
+    transition: none !important;
+    transform: none !important;
+  }
 }
