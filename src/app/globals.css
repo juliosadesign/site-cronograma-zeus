@@ -3,12 +3,12 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --canvas: #f7f8fa;
+  --canvas: #f6f7fb;
   --surface-1: #ffffff;
-  --surface-2: #eef1f6;
-  --hairline: #e2e6ee;
-  --hairline-strong: #cbd2df;
-  --ink: #0f172a;
+  --surface-2: #edf0f6;
+  --hairline: #e1e5ef;
+  --hairline-strong: #c8d0e0;
+  --ink: #0c1220;
   --ink-muted: #334155;
   --ink-subtle: #64748b;
   --zeus-blue: #2563eb;
@@ -20,14 +20,14 @@
 }
 
 :root.dark {
-  --canvas: #0b0c10;
-  --surface-1: #12141a;
-  --surface-2: #181b23;
-  --hairline: #242834;
-  --hairline-strong: #323848;
+  --canvas: #080a0f;
+  --surface-1: #10131b;
+  --surface-2: #161b26;
+  --hairline: #212736;
+  --hairline-strong: #2f384d;
   --ink: #f8fafc;
   --ink-muted: #cbd5e1;
-  --ink-subtle: #828ca0;
+  --ink-subtle: #8893a8;
   --zeus-blue: #3b82f6;
   --zeus-blue-soft: #38bdf8;
   --zeus-gold: #f59e0b;
@@ -49,6 +49,7 @@ body {
 .zeus-card {
   background-color: var(--surface-1);
   border: 1px solid var(--hairline);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .zeus-surface-2 {
@@ -65,6 +66,13 @@ body {
   box-shadow: inset 2.5px 0 0 0 var(--zeus-blue);
 }
 
+.zeus-hud-grid {
+  background-image:
+    linear-gradient(to right, rgba(56, 189, 248, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(56, 189, 248, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
 @keyframes zeusTabEnter {
   from {
     opacity: 0;
@@ -78,10 +86,10 @@ body {
 
 @keyframes zeusBarGrow {
   from {
-    transform: scaleY(0);
+    transform: scaleX(0);
   }
   to {
-    transform: scaleY(1);
+    transform: scaleX(1);
   }
 }
 
@@ -89,9 +97,9 @@ body {
   animation: zeusTabEnter 320ms var(--ease-enter) both;
 }
 
-.zeus-bar-grow {
-  transform-origin: bottom;
-  animation: zeusBarGrow 460ms var(--ease-enter) both;
+.zeus-bar-grow-x {
+  transform-origin: left;
+  animation: zeusBarGrow 480ms var(--ease-enter) both;
 }
 
 .zeus-btn {
@@ -118,7 +126,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .zeus-tab-enter,
-  .zeus-bar-grow {
+  .zeus-bar-grow-x {
     animation: none !important;
   }
   .zeus-btn,

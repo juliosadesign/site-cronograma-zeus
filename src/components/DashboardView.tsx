@@ -8,6 +8,7 @@ import {
   CalendarCheck,
   CheckCircle2,
   FileText,
+  Flame,
   MapPin,
   Megaphone,
   Pin,
@@ -19,17 +20,18 @@ import {
   computeAttendanceStats,
   computeDaysUntil,
   computeTeamReportPercentage,
-  getAreaCode,
-  getAreaName,
-  PRIORITY_META,
+  evaluateScheduleHealth,
   ZEUS_AREAS,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
-import { AreaChip, PriorityBadge, RoleBadge, StatusBadge } from "./Badge";
+import { AircraftBlueprint3D } from "./AircraftBlueprint3D";
+import { AreaChip, RoleBadge } from "./Badge";
 import {
+  AreaHealthHeatmap,
+  ForecastCurveChart,
   GaugeRing,
+  MiniSparkline,
   ReportsBarChart,
-  SprintAreaChart,
   StatusDonutChart,
 } from "./Charts";
 import { MemberAvatar } from "./MemberAvatar";
@@ -49,6 +51,11 @@ export function DashboardView({
   const [content, setContent] = useState("");
   const [pinned, setPinned] = useState(true);
 
+  const [todayIso, setTodayIso] = useState<string | null>(null);
+  useEffect(() => {
+    setTodayIso(new Date().toISOString().slice(0, 10));
+  }, []);
+
   const activeSprint = state.sprints.find((s) => s.isActive) ?? state.sprints[0];
   const activeTasks = state.tasks.filter((t) => t.sprintId === activeSprint?.id);
   const approvedInSprint = activeTasks.filter((t) => t.meetingApproved).length;
@@ -66,11 +73,9 @@ export function DashboardView({
 
   const approvedMembers = state.members.filter((m) => m.accountStatus === "approved");
   const membersInLab = approvedMembers.filter((m) => m.inLabNow);
-  const [todayIso, setTodayIso] = useState<string | null>(null);
-  useEffect(() => {
-    setTodayIso(new Date().toISOString().slice(0, 10));
-  }, []);
   const daysUntilComp = todayIso ? computeDaysUntil(state.competitionDate, todayIso) : null;
+  const scheduleHealth =
+    daysUntilComp !== null ? evaluateScheduleHealth(teamPercentage, daysUntilComp) : null;
 
   const avgAttendanceRate =
     approvedMembers.length === 0
@@ -82,20 +87,29 @@ export function DashboardView({
           ) / approvedMembers.length
         );
 
-  const sprintTimeline = [...state.sprints]
-    .reverse()
-    .map((sp) => {
-      const pts = state.tasks
-        .filter((t) => t.sprintId === sp.id && t.meetingApproved)
-        .reduce((acc, t) => acc + PRIORITY_META[t.priority].points, 0);
-      return {
-        label: sp.name.split("—")[0].trim(),
-        value: pts,
-        subtitle: sp.name,
-      };
-    });
+  const heatmapRows = byArea.map((item) => {
+    const areaTasks = activeTasks.filter((t) => t.areaId === item.areaId);
+    const sprintPct =
+      areaTasks.length === 0
+        ? item.percentage
+        : Math.round(
+            (areaTasks.filter((t) => t.status === "green").length / areaTasks.length) * 100
+          );
+    const linksCount =
+      state.reportSections.filter(
+        (r) => r.areaId === item.areaId || r.impactedAreaIds.includes(item.areaId)
+      ).length +
+      state.tasks.filter(
+        (t) => t.areaId === item.areaId || t.impactedAreaIds.includes(item.areaId)
+      ).length;
+    return {
+      areaId: item.areaId,
+      reportPct: item.percentage,
+      sprintPct,
+      linksCount,
+    };
+  });
 
-  const crossAreaTasks = activeTasks.filter((t) => t.impactedAreaIds.length > 0).slice(0, 3);
   const sortedAnnouncements = [...state.announcements].sort(
     (a, b) => Number(b.pinned) - Number(a.pinned)
   );
@@ -114,7 +128,7 @@ export function DashboardView({
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Overview · Zeus AeroDesign</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Central de Telemetria · Zeus</h1>
           <p className="text-xs text-[var(--ink-subtle)]">
             {activeSprint
               ? `${activeSprint.name} (${activeSprint.startDate} → ${activeSprint.endDate})`
@@ -124,7 +138,7 @@ export function DashboardView({
         <div className="flex items-center gap-2">
           <button
             onClick={() => onNavigate("calendar")}
-            className="zeus-btn inline-flex items-center gap-1.5 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-medium hover:border-blue-500/60"
+            className="zeus-btn inline-flex items-center gap-1.5 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-medium hover:border-amber-500/60"
           >
             <Calendar className="h-3.5 w-3.5 text-amber-500" /> Calendário
           </button>
@@ -141,20 +155,35 @@ export function DashboardView({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <button
           onClick={() => onNavigate("calendar")}
-          className="zeus-card zeus-card-interactive text-left rounded-xl p-4 border-amber-500/35"
+          className="zeus-card zeus-card-interactive text-left rounded-xl p-4 border-amber-500/40"
         >
           <div className="flex items-center justify-between text-xs text-[var(--ink-subtle)]">
             <span>Competição SAE Brasil</span>
             <Trophy className="h-4 w-4 text-amber-500" />
           </div>
-          <div className="mt-2 font-mono text-2xl font-bold text-amber-500">
-            {daysUntilComp === null
-              ? "—"
-              : daysUntilComp > 0
-              ? `${daysUntilComp} dias`
-              : daysUntilComp === 0
-              ? "Hoje!"
-              : "Encerrada"}
+          <div className="mt-2 flex items-baseline justify-between gap-2">
+            <span className="font-mono text-2xl font-bold text-amber-400">
+              {daysUntilComp === null
+                ? "—"
+                : daysUntilComp > 0
+                ? `${daysUntilComp}d`
+                : daysUntilComp === 0
+                ? "Hoje!"
+                : "Encerrada"}
+            </span>
+            {scheduleHealth && (
+              <span
+                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                  scheduleHealth.status === "ahead"
+                    ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+                    : scheduleHealth.status === "on_track"
+                    ? "border-sky-500/40 bg-sky-500/15 text-sky-400"
+                    : "border-rose-500/40 bg-rose-500/15 text-rose-400"
+                }`}
+              >
+                {scheduleHealth.label}
+              </span>
+            )}
           </div>
           <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">
             SJC · {state.competitionDate}
@@ -164,46 +193,105 @@ export function DashboardView({
         <div className="zeus-card rounded-xl p-4 flex items-center justify-between gap-3">
           <div>
             <div className="text-xs text-[var(--ink-subtle)]">Relatório Geral da Equipe</div>
-            <div className="mt-2 text-2xl font-semibold font-mono text-blue-500">
+            <div className="mt-2 text-2xl font-semibold font-mono text-amber-400">
               {teamPercentage}%
             </div>
-            <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">Média das 11 áreas SAE</div>
+            <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">
+              Meta hoje: {scheduleHealth ? `${scheduleHealth.targetPct}%` : "—"}
+            </div>
           </div>
           <GaugeRing percentage={teamPercentage} />
         </div>
 
-        <div className="zeus-card rounded-xl p-4">
-          <div className="flex items-center justify-between text-xs text-[var(--ink-subtle)]">
-            <span>Entregas da Sprint</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+        <div className="zeus-card rounded-xl p-4 flex items-center justify-between gap-2">
+          <div>
+            <div className="text-xs text-[var(--ink-subtle)]">Entregas da Sprint</div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold font-mono">
+                {approvedInSprint}/{activeTasks.length}
+              </span>
+              <span className="text-[11px] text-emerald-400 font-mono">
+                +{awaitingMeeting} val.
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">Oficializadas na reunião</div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-semibold font-mono">
-              {approvedInSprint}/{activeTasks.length}
-            </span>
-            <span className="text-[11px] text-sky-400 font-mono">
-              +{awaitingMeeting} p/ reunião
-            </span>
-          </div>
-          <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">Oficializadas na sprint atual</div>
+          <MiniSparkline values={[1, 2, 2, Math.max(1, approvedInSprint + awaitingMeeting)]} color="#10b981" />
         </div>
 
-        <div className="zeus-card rounded-xl p-4">
-          <div className="flex items-center justify-between text-xs text-[var(--ink-subtle)]">
-            <span>Presença Quinzenal</span>
-            <CalendarCheck className="h-4 w-4 text-blue-500" />
+        <div className="zeus-card rounded-xl p-4 flex items-center justify-between gap-2">
+          <div>
+            <div className="text-xs text-[var(--ink-subtle)]">Presença Quinzenal</div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold font-mono">{avgAttendanceRate}%</span>
+              <span className="text-[11px] text-sky-400 font-mono">
+                {state.meetings.length} reun.
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">Frequência média</div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-semibold font-mono">{avgAttendanceRate}%</span>
-            <span className="text-[11px] text-[var(--ink-subtle)] font-mono">
-              {state.meetings.length} reuniões
-            </span>
-          </div>
-          <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">Média de presença geral</div>
+          <MiniSparkline values={[78, 82, 85, avgAttendanceRate || 80]} color="#38bdf8" />
         </div>
       </div>
 
-      {/* Na Sala Agora + Status Donut */}
+      {/* Row 1: Simulador de Previsão & Metas + Visor 3D Conceitual */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <section className="lg:col-span-2 zeus-card rounded-xl p-4 space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold">Previsão & Metas até a Competição</h2>
+            <p className="text-[11px] text-[var(--ink-subtle)]">
+              Simule marcos como &ldquo;faltando 200 dias&rdquo; e veja se a equipe está adiantada, no prazo ou atrasada em relação à curva ideal SAE.
+            </p>
+          </div>
+          <ForecastCurveChart actualPct={teamPercentage} currentDaysRemaining={daysUntilComp} />
+        </section>
+
+        <AircraftBlueprint3D />
+      </div>
+
+      {/* Row 2: Heatmap das 11 Áreas + Ranking de Relatórios & Donut */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <section className="lg:col-span-2 zeus-card rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold flex items-center gap-2">
+                <Flame className="h-4 w-4 text-amber-500" />
+                Mapa de Calor das 11 Áreas
+              </h2>
+              <p className="text-[11px] text-[var(--ink-subtle)]">
+                Saúde combinada de Relatório, Sprint atual e conexões entre áreas
+              </p>
+            </div>
+            <button
+              onClick={() => onNavigate("areas")}
+              className="text-xs text-sky-400 hover:underline flex items-center gap-1"
+            >
+              <FileText className="h-3.5 w-3.5" /> Abrir Áreas
+            </button>
+          </div>
+          <AreaHealthHeatmap rows={heatmapRows} onSelectArea={() => onNavigate("areas")} />
+        </section>
+
+        <div className="space-y-4">
+          <section className="zeus-card rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                <BarChart3 className="h-4 w-4 text-blue-500" />
+                Top Relatórios
+              </h2>
+              <span className="font-mono text-[10px] text-amber-400">Média {teamPercentage}%</span>
+            </div>
+            <ReportsBarChart items={byArea} teamAverage={teamPercentage} />
+          </section>
+
+          <section className="zeus-card rounded-xl p-4 space-y-3">
+            <h2 className="text-sm font-semibold">Entregas da Sprint Atual</h2>
+            <StatusDonutChart green={greenCount} yellow={yellowCount} red={redCount} />
+          </section>
+        </div>
+      </div>
+
+      {/* Row 3: Na Sala Agora + Mural de Avisos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <section className="lg:col-span-2 zeus-card rounded-xl p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -213,7 +301,7 @@ export function DashboardView({
                 Na Sala Agora ({membersInLab.length})
               </h2>
               <p className="text-[11px] text-[var(--ink-subtle)]">
-                Membros disponíveis no laboratório (integração automática com horários da faculdade na V2)
+                Membros no laboratório e janelas previstas pela grade horária
               </p>
             </div>
             <button
@@ -256,182 +344,97 @@ export function DashboardView({
           )}
         </section>
 
-        <section className="zeus-card rounded-xl p-4 space-y-4">
-          <div>
-            <h2 className="text-sm font-semibold">Status da Sprint Atual</h2>
-            <p className="text-[11px] text-[var(--ink-subtle)]">
-              Distribuição visual das entregas
-            </p>
-          </div>
-          <StatusDonutChart green={greenCount} yellow={yellowCount} red={redCount} />
-        </section>
-      </div>
-
-      {/* Main Visual Row: Sprint Area Chart + Reports Bar Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <section className="lg:col-span-2 zeus-card rounded-xl p-4 space-y-4">
+        <section className="zeus-card rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-blue-500" />
-                Progresso dos Relatórios SAE por Área
-              </h2>
-              <p className="text-[11px] text-[var(--ink-subtle)]">
-                Comparativo individual de cada relatório frente à média geral ({teamPercentage}%)
-              </p>
-            </div>
-            <button
-              onClick={() => onNavigate("areas")}
-              className="text-xs text-sky-400 hover:underline flex items-center gap-1"
-            >
-              <FileText className="h-3.5 w-3.5" /> Editar checklists
-            </button>
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <Megaphone className="h-4 w-4 text-amber-500" />
+              Mural de Avisos
+            </h2>
+            {canPost && (
+              <button
+                onClick={() => setShowForm((v) => !v)}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 py-1 text-[11px] font-medium hover:border-amber-500/50"
+              >
+                <Plus className="h-3 w-3" /> Aviso
+              </button>
+            )}
           </div>
 
-          <ReportsBarChart items={byArea} teamAverage={teamPercentage} />
-
-          <div className="pt-2 border-t border-[var(--hairline)] space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold">Conexões entre Áreas (base para o Grafo V2)</span>
-              <span className="font-mono text-[10px] text-[var(--ink-subtle)]">
-                Impacto nos relatórios
-              </span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {crossAreaTasks.map((t) => (
-                <div
-                  key={t.id}
-                  className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/60 p-2.5 space-y-1.5"
+          {showForm && canPost && (
+            <form
+              onSubmit={handlePost}
+              className="zeus-surface-2 rounded-lg p-3 border border-[var(--hairline)] space-y-2"
+            >
+              <input
+                type="text"
+                placeholder="Título do comunicado..."
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-2.5 py-1.5 text-xs"
+              />
+              <textarea
+                rows={2}
+                placeholder="Mensagem para a equipe..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="w-full rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-2.5 py-1.5 text-xs"
+              />
+              <div className="flex items-center justify-between">
+                <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--ink-subtle)]">
+                  <input
+                    type="checkbox"
+                    checked={pinned}
+                    onChange={(e) => setPinned(e.target.checked)}
+                  />
+                  Fixar
+                </label>
+                <button
+                  type="submit"
+                  className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white"
                 >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-mono text-[10px] font-semibold text-amber-500">
-                      {getAreaCode(t.areaId)} → {t.impactedAreaIds.map(getAreaCode).join(", ")}
-                    </span>
-                    <StatusBadge status={t.status} />
+                  Publicar
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="space-y-2">
+            {sortedAnnouncements.map((ann) => {
+              const author = state.members.find((m) => m.id === ann.authorId);
+              return (
+                <div
+                  key={ann.id}
+                  className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/60 p-3 space-y-1"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-xs font-semibold flex items-center gap-1.5">
+                      {ann.pinned && <Pin className="h-3 w-3 text-amber-500 shrink-0" />}
+                      {ann.title}
+                    </div>
+                    {canPost && (
+                      <button
+                        onClick={() => togglePinAnnouncement(ann.id)}
+                        className="text-[10px] text-[var(--ink-subtle)] hover:text-amber-400 shrink-0"
+                      >
+                        {ann.pinned ? "Desafixar" : "Fixar"}
+                      </button>
+                    )}
                   </div>
-                  <div className="text-[11px] font-medium line-clamp-2">{t.title}</div>
-                  <div className="flex items-center justify-between gap-1">
-                    <PriorityBadge priority={t.priority} />
-                    <span className="text-[10px] text-[var(--ink-subtle)] truncate">
-                      {getAreaName(t.areaId)}
-                    </span>
+                  <p className="text-[11px] text-[var(--ink-muted)] leading-relaxed">{ann.content}</p>
+                  <div className="text-[10px] text-[var(--ink-subtle)] font-mono">
+                    {author?.fullName ?? "Liderança"} · {ann.createdAt}
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
+
+          <div className="pt-1 flex flex-wrap gap-1">
+            {ZEUS_AREAS.map((a) => (
+              <AreaChip key={a.id} areaId={a.id} subtle />
+            ))}
           </div>
         </section>
-
-        {/* Mural + Evolução Sprints */}
-        <div className="space-y-4">
-          <section className="zeus-card rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Evolução por Sprint</h2>
-              <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 font-mono text-[10px] text-sky-400">
-                2026
-              </span>
-            </div>
-            <SprintAreaChart
-              points={
-                sprintTimeline.length > 0
-                  ? sprintTimeline
-                  : [{ label: "Início", value: 0, subtitle: "Sem sprints cadastradas" }]
-              }
-            />
-          </section>
-
-          <section className="zeus-card rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold flex items-center gap-2">
-                <Megaphone className="h-4 w-4 text-amber-500" />
-                Mural de Avisos
-              </h2>
-              {canPost && (
-                <button
-                  onClick={() => setShowForm((v) => !v)}
-                  className="inline-flex items-center gap-1 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 py-1 text-[11px] font-medium hover:border-amber-500/50"
-                >
-                  <Plus className="h-3 w-3" /> Aviso
-                </button>
-              )}
-            </div>
-
-            {showForm && canPost && (
-              <form
-                onSubmit={handlePost}
-                className="zeus-surface-2 rounded-lg p-3 border border-[var(--hairline)] space-y-2"
-              >
-                <input
-                  type="text"
-                  placeholder="Título do comunicado..."
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-2.5 py-1.5 text-xs"
-                />
-                <textarea
-                  rows={2}
-                  placeholder="Mensagem para a equipe..."
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  className="w-full rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-2.5 py-1.5 text-xs"
-                />
-                <div className="flex items-center justify-between">
-                  <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--ink-subtle)]">
-                    <input
-                      type="checkbox"
-                      checked={pinned}
-                      onChange={(e) => setPinned(e.target.checked)}
-                    />
-                    Fixar
-                  </label>
-                  <button
-                    type="submit"
-                    className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white"
-                  >
-                    Publicar
-                  </button>
-                </div>
-              </form>
-            )}
-
-            <div className="space-y-2">
-              {sortedAnnouncements.map((ann) => {
-                const author = state.members.find((m) => m.id === ann.authorId);
-                return (
-                  <div
-                    key={ann.id}
-                    className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/60 p-3 space-y-1"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="text-xs font-semibold flex items-center gap-1.5">
-                        {ann.pinned && <Pin className="h-3 w-3 text-amber-500 shrink-0" />}
-                        {ann.title}
-                      </div>
-                      {canPost && (
-                        <button
-                          onClick={() => togglePinAnnouncement(ann.id)}
-                          className="text-[10px] text-[var(--ink-subtle)] hover:text-amber-400 shrink-0"
-                        >
-                          {ann.pinned ? "Desafixar" : "Fixar"}
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-[var(--ink-muted)] leading-relaxed">{ann.content}</p>
-                    <div className="text-[10px] text-[var(--ink-subtle)] font-mono">
-                      {author?.fullName ?? "Liderança"} · {ann.createdAt}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="pt-1 flex flex-wrap gap-1">
-              {ZEUS_AREAS.map((a) => (
-                <AreaChip key={a.id} areaId={a.id} subtle />
-              ))}
-            </div>
-          </section>
-        </div>
       </div>
     </div>
   );

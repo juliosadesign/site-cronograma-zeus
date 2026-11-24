@@ -7,10 +7,13 @@ import {
   canViewPrivateArea,
   computeAttendanceStats,
   computeDaysUntil,
+  computeForecastTarget,
   computeMemberPoints,
   computeReportPercentage,
   computeTeamReportPercentage,
+  evaluateScheduleHealth,
   getInitials,
+  projectTeamProgressAt,
   ZEUS_AREAS,
 } from "../domain.ts";
 import type { Member, MeetingAttendance, ReportSection, SprintTask } from "../types.ts";
@@ -107,5 +110,20 @@ assert.equal(computeDaysUntil("2026-11-24", "2026-11-24"), 0);
 assert.equal(computeDaysUntil("2026-11-20", "2026-11-24"), -4);
 assert.equal(getInitials("Júlio (Dev)"), "JÚ");
 assert.equal(getInitials("Lucas Mendes"), "LM");
+
+// Previsao e metas S-curve
+const t300 = computeForecastTarget(300);
+const t200 = computeForecastTarget(200);
+const t100 = computeForecastTarget(100);
+const t30 = computeForecastTarget(30);
+assert.ok(t300 < t200 && t200 < t100 && t100 < t30 && t30 <= 100, "S-curve deve crescer monotonicamente");
+assert.equal(computeForecastTarget(0), 100);
+
+assert.equal(evaluateScheduleHealth(70, 200).status, "ahead");
+assert.equal(evaluateScheduleHealth(t200, 200).status, "on_track");
+assert.equal(evaluateScheduleHealth(10, 200).status, "behind");
+
+assert.ok(projectTeamProgressAt(55, 250, 100) >= 55);
+assert.ok(projectTeamProgressAt(55, 250, 300) <= 55);
 
 console.log("All Zeus domain & RBAC tests passed!");

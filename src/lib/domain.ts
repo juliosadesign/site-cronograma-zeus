@@ -220,3 +220,51 @@ export function computeDaysUntil(targetDateIso: string, fromDateIso?: string): n
       })();
   return Math.round((targetMs - fromMs) / 86_400_000);
 }
+
+export function computeForecastTarget(
+  daysBeforeCompetition: number,
+  seasonTotalDays = 365
+): number {
+  const clampedDays = Math.max(0, Math.min(seasonTotalDays, daysBeforeCompetition));
+  const progress = 1 - clampedDays / Math.max(1, seasonTotalDays);
+  const smooth = progress * progress * (3 - 2 * progress);
+  return Math.round(5 + 95 * (0.45 * progress + 0.55 * smooth));
+}
+
+export function evaluateScheduleHealth(
+  actualPct: number,
+  daysRemaining: number,
+  seasonTotalDays = 365
+): {
+  targetPct: number;
+  delta: number;
+  status: "ahead" | "on_track" | "behind";
+  label: string;
+} {
+  const targetPct = computeForecastTarget(daysRemaining, seasonTotalDays);
+  const delta = Math.round(actualPct - targetPct);
+  if (delta >= 3) {
+    return { targetPct, delta, status: "ahead", label: "Adiantada" };
+  }
+  if (delta >= -5) {
+    return { targetPct, delta, status: "on_track", label: "No prazo" };
+  }
+  return { targetPct, delta, status: "behind", label: "Atrasada" };
+}
+
+export function projectTeamProgressAt(
+  actualPct: number,
+  currentDaysRemaining: number,
+  targetDaysBefore: number,
+  seasonTotalDays = 365
+): number {
+  const clampPct = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+  if (targetDaysBefore === currentDaysRemaining) return clampPct(actualPct);
+  const currentTarget = Math.max(1, computeForecastTarget(currentDaysRemaining, seasonTotalDays));
+  const futureTarget = computeForecastTarget(targetDaysBefore, seasonTotalDays);
+  if (targetDaysBefore > currentDaysRemaining) {
+    return clampPct((futureTarget / currentTarget) * actualPct);
+  }
+  const paceRatio = Math.max(0.45, Math.min(1.35, actualPct / currentTarget));
+  return clampPct(actualPct + (futureTarget - currentTarget) * paceRatio);
+}
