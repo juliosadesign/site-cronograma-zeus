@@ -8,10 +8,12 @@ import {
   canManageArea,
   canUpdateTaskStatus,
   canViewPrivateArea,
+  isTopLeadership,
 } from "./domain";
 import { INITIAL_ZEUS_STATE } from "./seed";
 import type {
   AttendanceStatus,
+  CalendarCategory,
   MeetingType,
   Member,
   Priority,
@@ -27,6 +29,26 @@ interface ZeusContextValue {
   currentUser: Member;
   switchUser: (memberId: string) => void;
   resetDemo: () => void;
+  toggleMyLabPresence: () => void;
+  updateMemberProfile: (
+    memberId: string,
+    patch: {
+      avatarUrl?: string;
+      bio?: string;
+      course?: string;
+      labSchedule?: string;
+      inLabNow?: boolean;
+    }
+  ) => void;
+  setCompetitionDate: (dateIso: string) => void;
+  createCalendarEvent: (input: {
+    title: string;
+    date: string;
+    category: CalendarCategory;
+    description?: string;
+    areaId?: string;
+  }) => void;
+  deleteCalendarEvent: (eventId: string) => void;
   updateTaskStatus: (taskId: string, status: TaskStatus) => void;
   toggleDirectorValidation: (taskId: string) => void;
   toggleMeetingApproval: (taskId: string) => void;
@@ -68,6 +90,29 @@ function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+function hydrateState(parsed: Partial<ZeusState>): ZeusState {
+  const seedById = new Map(INITIAL_ZEUS_STATE.members.map((m) => [m.id, m]));
+  const members = (parsed.members ?? INITIAL_ZEUS_STATE.members).map((m) => {
+    const seedMember = seedById.get(m.id);
+    return {
+      ...m,
+      inLabNow: typeof m.inLabNow === "boolean" ? m.inLabNow : (seedMember?.inLabNow ?? false),
+      avatarUrl: m.avatarUrl ?? seedMember?.avatarUrl,
+      course: m.course ?? seedMember?.course,
+      bio: m.bio ?? seedMember?.bio,
+      labSchedule: m.labSchedule ?? seedMember?.labSchedule,
+    };
+  });
+
+  return {
+    ...INITIAL_ZEUS_STATE,
+    ...parsed,
+    members,
+    competitionDate: parsed.competitionDate ?? INITIAL_ZEUS_STATE.competitionDate,
+    calendarEvents: parsed.calendarEvents ?? INITIAL_ZEUS_STATE.calendarEvents,
+  };
+}
+
 export function ZeusProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<ZeusState>(INITIAL_ZEUS_STATE);
   const [hydrated, setHydrated] = useState(false);
@@ -76,9 +121,9 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as ZeusState;
+        const parsed = JSON.parse(raw) as Partial<ZeusState>;
         if (parsed?.members?.length) {
-          setState(parsed);
+          setState(hydrateState(parsed));
         }
       }
     } catch {
@@ -111,6 +156,59 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(STORAGE_KEY);
         setState(INITIAL_ZEUS_STATE);
       },
+      toggleMyLabPresence: () =>
+        setState((s) => ({
+          ...s,
+          members: s.members.map((m) =>
+            m.id === s.currentUserId ? { ...m, inLabNow: !m.inLabNow } : m
+          ),
+        })),
+      updateMemberProfile: (memberId, patch) =>
+        setState((s) => {
+          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
+          if (user.id !== memberId && !isTopLeadership(user.role)) return s;
+          return {
+            ...s,
+            members: s.members.map((m) => (m.id === memberId ? { ...m, ...patch } : m)),
+          };
+        }),
+      setCompetitionDate: (dateIso) =>
+        setState((s) => {
+          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
+          if (!canApproveInMeeting(user) || !dateIso) return s;
+          return {
+            ...s,
+            competitionDate: dateIso,
+            calendarEvents: s.calendarEvents.map((ev) =>
+              ev.category === "competition" ? { ...ev, date: dateIso } : ev
+            ),
+          };
+        }),
+      createCalendarEvent: (input) =>
+        setState((s) => {
+          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
+          const allowed =
+            canApproveInMeeting(user) ||
+            Boolean(input.areaId && canManageArea(user, input.areaId));
+          if (!allowed) return s;
+          return {
+            ...s,
+            calendarEvents: [{ id: uid("ev"), ...input }, ...s.calendarEvents],
+          };
+        }),
+      deleteCalendarEvent: (eventId) =>
+        setState((s) => {
+          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
+          const ev = s.calendarEvents.find((item) => item.id === eventId);
+          if (!ev) return s;
+          const allowed =
+            canApproveInMeeting(user) || Boolean(ev.areaId && canManageArea(user, ev.areaId));
+          if (!allowed) return s;
+          return {
+            ...s,
+            calendarEvents: s.calendarEvents.filter((item) => item.id !== eventId),
+          };
+        }),
       updateTaskStatus: (taskId, status) =>
         setState((s) => {
           const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
@@ -185,6 +283,16 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
             ],
           };
         }),
+      deleteTask: (taskId) =>
+        setState((s) => {
+          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
+          const task = s.tasks.find((t) => t.id === taskId);
+          if (!task || !canManageArea(user, task.areaId)) return s;
+          return {
+            ...s,
+            tasks: s.tasks.filter((t) => t.id !== taskId),
+          };
+        }),
       createSprint: (input) =>
         setState((s) => {
           const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
@@ -195,16 +303,6 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
               { id: uid("sp"), ...input, isActive: true },
               ...s.sprints.map((sp) => ({ ...sp, isActive: false })),
             ],
-          };
-        }),
-      deleteTask: (taskId) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          const task = s.tasks.find((t) => t.id === taskId);
-          if (!task || !canManageArea(user, task.areaId)) return s;
-          return {
-            ...s,
-            tasks: s.tasks.filter((t) => t.id !== taskId),
           };
         }),
       deleteSprint: (sprintId) =>
@@ -374,6 +472,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
               requestedRole: input.requestedRole,
               areaIds: input.areaIds.length ? input.areaIds : ["aerodinamica"],
               directorAreaIds: [],
+              inLabNow: false,
               createdAt: new Date().toISOString().slice(0, 10),
             },
           ],

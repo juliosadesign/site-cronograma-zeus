@@ -11,6 +11,7 @@ import {
 import { useZeus } from "@/lib/store";
 import type { AttendanceStatus, MeetingType } from "@/lib/types";
 import { RoleBadge } from "./Badge";
+import { MemberAvatar } from "./MemberAvatar";
 
 const ATTENDANCE_LABELS: Record<AttendanceStatus, { label: string; activeClass: string }> = {
   present: {
@@ -27,7 +28,11 @@ const ATTENDANCE_LABELS: Record<AttendanceStatus, { label: string; activeClass: 
   },
 };
 
-export function MeetingsView() {
+export function MeetingsView({
+  onOpenProfile,
+}: {
+  onOpenProfile: (memberId: string) => void;
+}) {
   const { state, currentUser, createMeeting, setAttendance } = useZeus();
   const [selectedMeetingId, setSelectedMeetingId] = useState(state.meetings[0]?.id ?? "");
   const [showForm, setShowForm] = useState(false);
@@ -205,10 +210,15 @@ export function MeetingsView() {
                       key={m.id}
                       className="py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
                     >
-                      <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onOpenProfile(m.id)}
+                        className="flex items-center gap-2 hover:text-amber-400 text-left"
+                      >
+                        <MemberAvatar member={m} size="sm" />
                         <span className="text-xs font-medium">{m.fullName}</span>
                         <RoleBadge role={m.role} />
-                      </div>
+                      </button>
                       <div className="flex items-center gap-1.5">
                         {(["present", "justified", "absent"] as AttendanceStatus[]).map((st) => {
                           const active = currentStatus === st;

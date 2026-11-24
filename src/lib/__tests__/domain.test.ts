@@ -6,9 +6,11 @@ import {
   canUpdateTaskStatus,
   canViewPrivateArea,
   computeAttendanceStats,
+  computeDaysUntil,
   computeMemberPoints,
   computeReportPercentage,
   computeTeamReportPercentage,
+  getInitials,
   ZEUS_AREAS,
 } from "../domain.ts";
 import type { Member, MeetingAttendance, ReportSection, SprintTask } from "../types.ts";
@@ -24,6 +26,7 @@ const dev: Member = {
   requestedRole: "desenvolvedor",
   areaIds: ["integracao"],
   directorAreaIds: [],
+  inLabNow: true,
   createdAt: "2026-01-01",
 };
 
@@ -98,5 +101,11 @@ const att: MeetingAttendance[] = [
 ];
 const stats = computeAttendanceStats("cal", att);
 assert.deepEqual(stats, { present: 2, absent: 1, justified: 1, total: 4, rate: 50 });
+
+assert.equal(computeDaysUntil("2026-12-04", "2026-11-24"), 10);
+assert.equal(computeDaysUntil("2026-11-24", "2026-11-24"), 0);
+assert.equal(computeDaysUntil("2026-11-20", "2026-11-24"), -4);
+assert.equal(getInitials("Júlio (Dev)"), "JÚ");
+assert.equal(getInitials("Lucas Mendes"), "LM");
 
 console.log("All Zeus domain & RBAC tests passed!");

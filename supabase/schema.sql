@@ -62,6 +62,10 @@ create table if not exists public.profiles (
   account_status zeus_account_status not null default 'pending',
   requested_role zeus_role default 'calouro',
   avatar_url text,
+  course text,
+  bio text,
+  in_lab_now boolean not null default false,
+  lab_schedule text,
   created_at timestamptz not null default now()
 );
 
@@ -161,6 +165,26 @@ create table if not exists public.announcements (
   content text not null,
   pinned boolean not null default false,
   created_at timestamptz not null default now()
+);
+
+-- 10. Calendario & Data da Competicao SAE
+create table if not exists public.team_settings (
+  id integer primary key default 1 check (id = 1),
+  competition_date date not null default '2027-10-28'
+);
+
+insert into public.team_settings (id, competition_date)
+values (1, '2027-10-28')
+on conflict (id) do nothing;
+
+create table if not exists public.calendar_events (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  event_date date not null,
+  category text not null check (category in ('competition', 'meeting', 'sprint', 'deadline')),
+  description text,
+  area_id text references public.areas(id) on delete set null,
+  created_by uuid references public.profiles(id)
 );
 
 -- Helpers de autorizacao para RLS

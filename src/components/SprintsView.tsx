@@ -14,8 +14,13 @@ import {
 import { useZeus } from "@/lib/store";
 import type { Priority, TaskStatus } from "@/lib/types";
 import { AreaChip, PriorityBadge, RoleBadge } from "./Badge";
+import { MemberAvatar } from "./MemberAvatar";
 
-export function SprintsView() {
+export function SprintsView({
+  onOpenProfile,
+}: {
+  onOpenProfile: (memberId: string) => void;
+}) {
   const {
     state,
     currentUser,
@@ -397,9 +402,18 @@ export function SprintsView() {
                       <p className="text-xs text-[var(--ink-subtle)]">{task.description}</p>
                     )}
                     <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <span className="text-xs text-[var(--ink-muted)]">
-                        Responsável: <strong>{assignee?.fullName ?? "—"}</strong>
-                      </span>
+                      {assignee ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenProfile(assignee.id)}
+                          className="inline-flex items-center gap-1.5 text-xs text-[var(--ink-muted)] hover:text-amber-400"
+                        >
+                          <MemberAvatar member={assignee} size="sm" />
+                          <strong>{assignee.fullName}</strong>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-[var(--ink-muted)]">Responsável: —</span>
+                      )}
                       {assignee && <RoleBadge role={assignee.role} />}
                       {task.impactedAreaIds.length > 0 && (
                         <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ink-subtle)]">

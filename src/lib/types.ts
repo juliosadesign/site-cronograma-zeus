@@ -11,6 +11,7 @@ export type TaskStatus = "red" | "yellow" | "green";
 export type Priority = "critical" | "high" | "medium" | "low";
 export type AttendanceStatus = "present" | "absent" | "justified";
 export type MeetingType = "general" | "area";
+export type CalendarCategory = "competition" | "meeting" | "sprint" | "deadline";
 
 export interface Area {
   id: string;
@@ -28,6 +29,11 @@ export interface Member {
   requestedRole: Role;
   areaIds: string[];
   directorAreaIds: string[];
+  avatarUrl?: string;
+  course?: string;
+  bio?: string;
+  inLabNow: boolean;
+  labSchedule?: string;
   createdAt: string;
 }
 
@@ -104,8 +110,19 @@ export interface Announcement {
   createdAt: string;
 }
 
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string;
+  category: CalendarCategory;
+  description?: string;
+  areaId?: string;
+}
+
 export interface ZeusState {
   currentUserId: string;
+  competitionDate: string;
+  calendarEvents: CalendarEvent[];
   members: Member[];
   sprints: Sprint[];
   tasks: SprintTask[];

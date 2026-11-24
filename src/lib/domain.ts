@@ -194,3 +194,29 @@ export function getAreaName(areaId: string): string {
 export function getAreaCode(areaId: string): string {
   return ZEUS_AREAS.find((a) => a.id === areaId)?.shortCode ?? areaId.toUpperCase();
 }
+
+export function getInitials(fullName: string): string {
+  const parts = fullName
+    .replace(/\(.*?\)/g, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "Z";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+export function computeDaysUntil(targetDateIso: string, fromDateIso?: string): number {
+  const parseUtc = (iso: string) => {
+    const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+    return Date.UTC(y, (m || 1) - 1, d || 1);
+  };
+  const targetMs = parseUtc(targetDateIso);
+  const fromMs = fromDateIso
+    ? parseUtc(fromDateIso)
+    : (() => {
+        const now = new Date();
+        return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+      })();
+  return Math.round((targetMs - fromMs) / 86_400_000);
+}

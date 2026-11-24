@@ -1,7 +1,38 @@
 import type { ZeusState } from "./types";
 
+function portraitSvg(initials: string, bg: string, accent: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" fill="${bg}"/><circle cx="64" cy="48" r="22" fill="${accent}" opacity="0.22"/><path d="M24 118c4-24 20-36 40-36s36 12 40 36" fill="${accent}" opacity="0.22"/><text x="64" y="72" text-anchor="middle" font-family="system-ui, sans-serif" font-size="38" font-weight="700" fill="${accent}">${initials}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 export const INITIAL_ZEUS_STATE: ZeusState = {
   currentUserId: "m-julio",
+  competitionDate: "2027-10-28",
+  calendarEvents: [
+    {
+      id: "ev-comp",
+      title: "Competição SAE AeroDesign Brasil — SJC",
+      date: "2027-10-28",
+      category: "competition",
+      description: "Etapa nacional em São José dos Campos (SP).",
+    },
+    {
+      id: "ev-reg",
+      title: "Fechamento da leitura do regulamento SAE",
+      date: "2026-11-28",
+      category: "deadline",
+      description: "Todas as áreas validam requisitos e limitações iniciais.",
+      areaId: "gestao",
+    },
+    {
+      id: "ev-conc",
+      title: "Escolha do conceito da aeronave",
+      date: "2026-12-08",
+      category: "sprint",
+      description: "Reunião de trade-off entre Aerodinâmica, Desempenho e Estruturas.",
+      areaId: "integracao",
+    },
+  ],
   members: [
     {
       id: "m-julio",
@@ -12,6 +43,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "desenvolvedor",
       areaIds: ["integracao", "eletrico", "gestao"],
       directorAreaIds: [],
+      avatarUrl: portraitSvg("JL", "#0f172a", "#38bdf8"),
+      course: "Engenharia · UEMA",
+      bio: "Desenvolvedor da plataforma Zeus e integrante de Integração, Elétrico e Gestão.",
+      inLabNow: true,
+      labSchedule: "Seg/Qua 14h–18h · Sex 09h–12h",
       createdAt: "2026-02-10",
     },
     {
@@ -23,6 +59,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "capitao",
       areaIds: ["gestao", "desempenho"],
       directorAreaIds: [],
+      avatarUrl: portraitSvg("LM", "#1e1b18", "#f59e0b"),
+      course: "Eng. Mecânica · UEMA",
+      bio: "Capitão geral da equipe Zeus AeroDesign 2026.",
+      inLabNow: true,
+      labSchedule: "Ter/Qui 14h–18h",
       createdAt: "2026-02-01",
     },
     {
@@ -34,6 +75,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "cocapitao",
       areaIds: ["aerodinamica", "integracao"],
       directorAreaIds: [],
+      avatarUrl: portraitSvg("MC", "#1e1b18", "#fbbf24"),
+      course: "Eng. Mecânica · UEMA",
+      bio: "Co-capitã técnica acompanhando integração entre subequipes.",
+      inLabNow: false,
+      labSchedule: "Seg/Qua 09h–12h",
       createdAt: "2026-02-01",
     },
     {
@@ -45,6 +91,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "diretor",
       areaIds: ["aerodinamica", "desempenho"],
       directorAreaIds: ["aerodinamica"],
+      avatarUrl: portraitSvg("RS", "#172554", "#60a5fa"),
+      course: "Eng. Mecânica · UEMA",
+      bio: "Diretor de Aerodinâmica focado no estudo conceitual.",
+      inLabNow: true,
+      labSchedule: "Seg/Sex 14h–17h",
       createdAt: "2026-02-05",
     },
     {
@@ -56,6 +107,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "diretor",
       areaIds: ["estruturas", "cargas"],
       directorAreaIds: ["estruturas"],
+      avatarUrl: portraitSvg("CR", "#172554", "#93c5fd"),
+      course: "Eng. Civil / Mecânica · UEMA",
+      bio: "Diretora de Estruturas e validação de materiais.",
+      inLabNow: false,
+      labSchedule: "Ter/Qui 08h–12h",
       createdAt: "2026-02-05",
     },
     {
@@ -67,6 +123,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "efetivado",
       areaIds: ["estruturas", "plantas"],
       directorAreaIds: [],
+      avatarUrl: portraitSvg("PH", "#064e3b", "#34d399"),
+      course: "Eng. Mecânica · UEMA",
+      bio: "Membro efetivado em Estruturas e Plantas.",
+      inLabNow: true,
+      labSchedule: "Seg/Qui 15h–18h",
       createdAt: "2026-03-01",
     },
     {
@@ -78,6 +139,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "efetivado",
       areaIds: ["estabilidade", "desempenho"],
       directorAreaIds: [],
+      avatarUrl: portraitSvg("BA", "#064e3b", "#6ee7b7"),
+      course: "Eng. da Computação · UEMA",
+      bio: "Simulações de desempenho e estabilidade.",
+      inLabNow: false,
+      labSchedule: "Qua/Sex 14h–17h",
       createdAt: "2026-03-04",
     },
     {
@@ -89,6 +155,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "calouro",
       areaIds: ["aerodinamica"],
       directorAreaIds: [],
+      avatarUrl: portraitSvg("GN", "#27272a", "#d4d4d8"),
+      course: "Eng. Mecânica · UEMA",
+      bio: "Calouro estudando aerodinâmica conceitual.",
+      inLabNow: false,
+      labSchedule: "Ter 16h–18h",
       createdAt: "2026-08-12",
     },
     {
@@ -100,6 +171,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "calouro",
       areaIds: ["marketing", "financeiro"],
       directorAreaIds: [],
+      avatarUrl: portraitSvg("LS", "#27272a", "#e4e4e7"),
+      course: "Administração · UEMA",
+      bio: "Caloura em Marketing e Financeiro (@equipezeusma).",
+      inLabNow: false,
+      labSchedule: "Qua 10h–12h",
       createdAt: "2026-08-15",
     },
     {
@@ -111,6 +187,10 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       requestedRole: "calouro",
       areaIds: ["eletrico", "integracao"],
       directorAreaIds: [],
+      avatarUrl: portraitSvg("TF", "#27272a", "#a1a1aa"),
+      course: "Eng. Elétrica · UEMA",
+      bio: "Solicitando entrada em Proj. Elétrico e Integração.",
+      inLabNow: false,
       createdAt: "2026-11-22",
     },
   ],

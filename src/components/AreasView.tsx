@@ -13,8 +13,13 @@ import {
 import { useZeus } from "@/lib/store";
 import { AreaChip, RoleBadge } from "./Badge";
 import { GaugeRing } from "./Charts";
+import { MemberAvatar } from "./MemberAvatar";
 
-export function AreasView() {
+export function AreasView({
+  onOpenProfile,
+}: {
+  onOpenProfile: (memberId: string) => void;
+}) {
   const {
     state,
     currentUser,
@@ -340,13 +345,16 @@ export function AreasView() {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {areaMembers.map((m) => (
-                <span
+                <button
+                  type="button"
                   key={m.id}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] px-2 py-1 text-xs"
+                  onClick={() => onOpenProfile(m.id)}
+                  className="inline-flex items-center gap-2 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] hover:border-[var(--hairline-strong)] px-2 py-1 text-xs"
                 >
-                  {m.fullName}
+                  <MemberAvatar member={m} size="sm" />
+                  <span>{m.fullName}</span>
                   <RoleBadge role={m.role} />
-                </span>
+                </button>
               ))}
             </div>
           </div>

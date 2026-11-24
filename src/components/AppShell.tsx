@@ -2,10 +2,12 @@
 
 import React, { useEffect, useState } from "react";
 import {
+  Calendar,
   CalendarCheck2,
   FolderLock,
   LayoutDashboard,
   ListChecks,
+  MapPin,
   Moon,
   RotateCcw,
   Search,
@@ -18,21 +20,31 @@ import { canApproveAccounts, ROLE_META } from "@/lib/domain";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useZeus } from "@/lib/store";
 import { RoleBadge } from "./Badge";
+import { MemberAvatar } from "./MemberAvatar";
 
-export type NavTab = "dashboard" | "sprints" | "areas" | "ranking" | "meetings" | "admin";
+export type NavTab =
+  | "dashboard"
+  | "sprints"
+  | "areas"
+  | "calendar"
+  | "ranking"
+  | "meetings"
+  | "admin";
 
 const THEME_KEY = "zeus_theme";
 
 export function AppShell({
   activeTab,
   onTabChange,
+  onOpenProfile,
   children,
 }: {
   activeTab: NavTab;
   onTabChange: (tab: NavTab) => void;
+  onOpenProfile: (memberId: string) => void;
   children: React.ReactNode;
 }) {
-  const { state, currentUser, switchUser, resetDemo } = useZeus();
+  const { state, currentUser, switchUser, resetDemo, toggleMyLabPresence } = useZeus();
   const [dark, setDark] = useState(true);
   const [quickJump, setQuickJump] = useState("");
 
@@ -63,6 +75,7 @@ export function AppShell({
     { id: "dashboard", label: "Visão Geral", shortLabel: "Início", icon: LayoutDashboard },
     { id: "sprints", label: "Sprints", shortLabel: "Sprints", icon: ListChecks },
     { id: "areas", label: "Áreas & Relatórios", shortLabel: "Áreas", icon: FolderLock },
+    { id: "calendar", label: "Calendário", shortLabel: "Agenda", icon: Calendar },
     { id: "ranking", label: "Ranking & Perfis", shortLabel: "Ranking", icon: Trophy },
     { id: "meetings", label: "Reuniões", shortLabel: "Chamada", icon: CalendarCheck2 },
   ];
@@ -178,12 +191,18 @@ export function AppShell({
         </nav>
 
         <div className="p-3 border-t border-[var(--hairline)] space-y-2.5">
-          <div className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] p-2.5">
-            <div className="text-xs font-medium truncate">{currentUser.fullName}</div>
-            <div className="mt-1.5">
-              <RoleBadge role={currentUser.role} />
+          <button
+            onClick={() => onOpenProfile(currentUser.id)}
+            className="w-full text-left rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] hover:border-[var(--hairline-strong)] p-2.5 flex items-center gap-2.5 transition-colors"
+          >
+            <MemberAvatar member={currentUser} size="md" />
+            <div className="min-w-0">
+              <div className="text-xs font-medium truncate">{currentUser.fullName}</div>
+              <div className="mt-1">
+                <RoleBadge role={currentUser.role} />
+              </div>
             </div>
-          </div>
+          </button>
           <div className="text-[11px] text-[var(--ink-subtle)] flex items-center justify-between px-1">
             <span>{isSupabaseConfigured ? "Supabase ativo" : "Modo Local / Demo"}</span>
             {!isSupabaseConfigured && (
@@ -219,9 +238,24 @@ export function AppShell({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={toggleMyLabPresence}
+              title="Marcar se você está na sala do laboratório agora"
+              className={`zeus-btn h-8 rounded-md border px-2.5 text-xs font-medium inline-flex items-center gap-1.5 ${
+                currentUser.inLabNow
+                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+                  : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)]"
+              }`}
+            >
+              <MapPin className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">
+                {currentUser.inLabNow ? "Na sala" : "Fora da sala"}
+              </span>
+            </button>
+
             {!isSupabaseConfigured && (
               <label className="flex items-center gap-1.5 text-xs">
-                <span className="hidden sm:inline text-[var(--ink-subtle)]">Testar como:</span>
+                <span className="hidden lg:inline text-[var(--ink-subtle)]">Testar como:</span>
                 <select
                   aria-label="Selecionar usuário de demonstração"
                   value={currentUser.id}
@@ -266,7 +300,7 @@ export function AppShell({
               key={item.id}
               onClick={() => onTabChange(item.id)}
               className={`relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-md text-[10px] font-medium ${
-                active ? "text-amber-400" : "text-[var(--ink-subtle)]"
+                active ? "text-blue-500" : "text-[var(--ink-subtle)]"
               }`}
             >
               <Icon className="h-4 w-4" />
