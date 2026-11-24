@@ -155,14 +155,14 @@ export function AppShell({
                   <button
                     key={item.id}
                     onClick={() => onTabChange(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-all border ${
+                    className={`zeus-btn w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium border ${
                       active
-                        ? "zeus-glow-pill text-[var(--ink)]"
+                        ? "zeus-nav-active text-[var(--ink)]"
                         : "text-[var(--ink-subtle)] hover:text-[var(--ink)] hover:bg-[var(--surface-2)]/70 border-transparent"
                     }`}
                   >
                     <span className="flex items-center gap-2.5">
-                      <Icon className={`h-4 w-4 ${active ? "text-amber-400" : ""}`} />
+                      <Icon className={`h-4 w-4 ${active ? "text-blue-500" : ""}`} />
                       {item.label}
                     </span>
                     {item.badge ? (
