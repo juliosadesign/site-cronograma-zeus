@@ -7,6 +7,7 @@ import {
   FolderLock,
   LayoutDashboard,
   ListChecks,
+  LogOut,
   MapPin,
   Moon,
   RotateCcw,
@@ -44,7 +45,7 @@ export function AppShell({
   onOpenProfile: (memberId: string) => void;
   children: React.ReactNode;
 }) {
-  const { state, currentUser, switchUser, resetDemo, toggleMyLabPresence } = useZeus();
+  const { state, currentUser, switchUser, resetDemo, toggleMyLabPresence, signOut } = useZeus();
   const [dark, setDark] = useState(true);
   const [quickJump, setQuickJump] = useState("");
 
@@ -205,7 +206,16 @@ export function AppShell({
           </button>
           <div className="text-[11px] text-[var(--ink-subtle)] flex items-center justify-between px-1">
             <span>{isSupabaseConfigured ? "Supabase ativo" : "Modo Local / Demo"}</span>
-            {!isSupabaseConfigured && (
+            {isSupabaseConfigured ? (
+              <button
+                onClick={() => void signOut()}
+                title="Sair da conta"
+                className="inline-flex items-center gap-1 text-sky-400 hover:text-amber-400 transition-colors"
+              >
+                <LogOut className="h-3 w-3" />
+                Sair
+              </button>
+            ) : (
               <button
                 onClick={resetDemo}
                 title="Resetar dados de demonstração"

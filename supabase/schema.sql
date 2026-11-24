@@ -1,5 +1,5 @@
 -- Zeus AeroDesign (UEMA) — Schema V1 + Row Level Security (Supabase / Postgres)
--- Execute este arquivo no SQL Editor do seu projeto Supabase.
+-- Aplicado via migration no projeto Supabase zeus-aerodesign.
 
 create extension if not exists "pgcrypto";
 
@@ -187,7 +187,7 @@ create table if not exists public.calendar_events (
   created_by uuid references public.profiles(id)
 );
 
--- Helpers de autorizacao para RLS
+-- Helpers de autorizacao para RLS (search_path travado)
 create or replace function public.is_approved_member()
 returns boolean
 language sql
@@ -197,7 +197,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.profiles
-    where id = auth.uid() and account_status = 'approved'
+    where id = (select auth.uid()) and account_status = 'approved'
   );
 $$;
 
@@ -210,7 +210,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.profiles
-    where id = auth.uid()
+    where id = (select auth.uid())
       and account_status = 'approved'
       and role in ('desenvolvedor', 'capitao', 'cocapitao')
   );
@@ -227,7 +227,7 @@ as $$
     select 1
     from public.profiles p
     join public.profile_areas pa on pa.profile_id = p.id
-    where p.id = auth.uid()
+    where p.id = (select auth.uid())
       and p.account_status = 'approved'
       and p.role = 'diretor'
       and pa.area_id = target_area
@@ -245,10 +245,66 @@ as $$
   select public.is_top_leadership() or exists (
     select 1 from public.profile_areas pa
     join public.profiles p on p.id = pa.profile_id
-    where p.id = auth.uid()
+    where p.id = (select auth.uid())
       and p.account_status = 'approved'
       and pa.area_id = target_area
   );
+$$;
+
+-- Bootstrap seguro no primeiro cadastro:
+-- Se nao houver nenhum perfil no banco, o primeiro usuario vira Desenvolvedor aprovado;
+-- os seguintes entram como Calouro Pendente aguardando aprovacao.
+create or replace function public.register_or_bootstrap_profile(
+  p_full_name text,
+  p_email text,
+  p_requested_role zeus_role default 'calouro',
+  p_area_ids text[] default array['aerodinamica']
+)
+returns public.profiles
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_is_first boolean;
+  v_profile public.profiles;
+  v_area text;
+begin
+  if v_uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select * into v_profile from public.profiles where id = v_uid;
+  if found then
+    return v_profile;
+  end if;
+
+  -- Lock leve para garantir unicidade do primeiro usuario bootstrap
+  lock table public.profiles in share row exclusive mode;
+  select not exists (select 1 from public.profiles) into v_is_first;
+
+  insert into public.profiles (id, full_name, email, role, account_status, requested_role)
+  values (
+    v_uid,
+    coalesce(nullif(trim(p_full_name), ''), p_email),
+    p_email,
+    case when v_is_first then 'desenvolvedor'::zeus_role else 'calouro'::zeus_role end,
+    case when v_is_first then 'approved'::zeus_account_status else 'pending'::zeus_account_status end,
+    p_requested_role
+  )
+  returning * into v_profile;
+
+  if array_length(p_area_ids, 1) is not null then
+    foreach v_area in array p_area_ids loop
+      insert into public.profile_areas (profile_id, area_id, is_director)
+      values (v_uid, v_area, false)
+      on conflict do nothing;
+    end loop;
+  end if;
+
+  return v_profile;
+end;
 $$;
 
 -- Habilitar RLS em todas as tabelas
@@ -263,57 +319,114 @@ alter table public.meetings enable row level security;
 alter table public.meeting_attendance enable row level security;
 alter table public.area_notes enable row level security;
 alter table public.announcements enable row level security;
+alter table public.team_settings enable row level security;
+alter table public.calendar_events enable row level security;
 
 -- Leitura transparente para membros aprovados (exceto area_notes)
-create policy "approved_read_areas" on public.areas for select using (public.is_approved_member());
-create policy "read_own_or_approved_profiles" on public.profiles for select using (id = auth.uid() or public.is_approved_member());
-create policy "approved_read_profile_areas" on public.profile_areas for select using (public.is_approved_member());
-create policy "approved_read_sprints" on public.sprints for select using (public.is_approved_member());
-create policy "approved_read_tasks" on public.sprint_tasks for select using (public.is_approved_member());
-create policy "approved_read_report_sections" on public.report_sections for select using (public.is_approved_member());
-create policy "approved_read_report_overrides" on public.area_report_overrides for select using (public.is_approved_member());
-create policy "approved_read_meetings" on public.meetings for select using (public.is_approved_member());
-create policy "approved_read_attendance" on public.meeting_attendance for select using (public.is_approved_member());
-create policy "approved_read_announcements" on public.announcements for select using (public.is_approved_member());
+create policy "approved_read_areas" on public.areas for select to authenticated using (public.is_approved_member());
+create policy "read_own_or_approved_profiles" on public.profiles for select to authenticated using (id = (select auth.uid()) or public.is_approved_member());
+create policy "approved_read_profile_areas" on public.profile_areas for select to authenticated using (public.is_approved_member() or profile_id = (select auth.uid()));
+create policy "approved_read_sprints" on public.sprints for select to authenticated using (public.is_approved_member());
+create policy "approved_read_tasks" on public.sprint_tasks for select to authenticated using (public.is_approved_member());
+create policy "approved_read_report_sections" on public.report_sections for select to authenticated using (public.is_approved_member());
+create policy "approved_read_report_overrides" on public.area_report_overrides for select to authenticated using (public.is_approved_member());
+create policy "approved_read_meetings" on public.meetings for select to authenticated using (public.is_approved_member());
+create policy "approved_read_attendance" on public.meeting_attendance for select to authenticated using (public.is_approved_member());
+create policy "approved_read_announcements" on public.announcements for select to authenticated using (public.is_approved_member());
+create policy "approved_read_team_settings" on public.team_settings for select to authenticated using (public.is_approved_member());
+create policy "approved_read_calendar_events" on public.calendar_events for select to authenticated using (public.is_approved_member());
 
--- Auto-cadastro inicial do proprio perfil (sempre pending + calouro ate aprovacao)
-create policy "self_insert_profile" on public.profiles
-  for insert with check (id = auth.uid() and account_status = 'pending' and role = 'calouro');
-create policy "self_insert_profile_areas" on public.profile_areas
-  for insert with check (profile_id = auth.uid() and is_director = false);
+-- Auto-atualizacao do proprio perfil sem escalar role/status
+create policy "self_update_profile" on public.profiles
+  for update to authenticated
+  using (id = (select auth.uid()))
+  with check (
+    id = (select auth.uid())
+    and (
+      public.is_top_leadership()
+      or (
+        role = (select p.role from public.profiles p where p.id = (select auth.uid()))
+        and account_status = (select p.account_status from public.profiles p where p.id = (select auth.uid()))
+      )
+    )
+  );
 
 -- Mutacoes da lideranca maxima (Desenvolvedor, Capitao, Co-Capitao)
 create policy "leadership_manage_profiles" on public.profiles
-  for update using (public.is_top_leadership());
+  for update to authenticated
+  using (public.is_top_leadership())
+  with check (public.is_top_leadership());
+
 create policy "leadership_manage_profile_areas" on public.profile_areas
-  for all using (public.is_top_leadership()) with check (public.is_top_leadership());
+  for all to authenticated
+  using (public.is_top_leadership())
+  with check (public.is_top_leadership());
+
 create policy "leadership_manage_sprints" on public.sprints
-  for all using (public.is_top_leadership()) with check (public.is_top_leadership());
+  for all to authenticated
+  using (public.is_top_leadership())
+  with check (public.is_top_leadership());
+
 create policy "leadership_manage_announcements" on public.announcements
-  for all using (public.is_top_leadership()) with check (public.is_top_leadership());
+  for all to authenticated
+  using (public.is_top_leadership())
+  with check (public.is_top_leadership());
+
+create policy "leadership_manage_team_settings" on public.team_settings
+  for all to authenticated
+  using (public.is_top_leadership())
+  with check (public.is_top_leadership());
+
+-- Eventos do calendario: lideranca ou diretor da area vinculada
+create policy "director_manage_calendar_events" on public.calendar_events
+  for all to authenticated
+  using (public.is_top_leadership() or (area_id is not null and public.is_area_director(area_id)))
+  with check (public.is_top_leadership() or (area_id is not null and public.is_area_director(area_id)));
 
 -- Tarefas: diretores/lideranca criam e deletam; responsavel ou diretor da area atualiza
 create policy "director_insert_tasks" on public.sprint_tasks
-  for insert with check (public.is_area_director(area_id));
+  for insert to authenticated
+  with check (public.is_area_director(area_id));
+
 create policy "member_or_director_update_tasks" on public.sprint_tasks
-  for update using (assignee_id = auth.uid() or public.is_area_director(area_id));
+  for update to authenticated
+  using (assignee_id = (select auth.uid()) or public.is_area_director(area_id))
+  with check (assignee_id = (select auth.uid()) or public.is_area_director(area_id));
+
 create policy "director_delete_tasks" on public.sprint_tasks
-  for delete using (public.is_area_director(area_id));
+  for delete to authenticated
+  using (public.is_area_director(area_id));
 
 -- Relatorios e Reunioes: diretores da area ou lideranca maxima
 create policy "director_manage_report_sections" on public.report_sections
-  for all using (public.is_area_director(area_id)) with check (public.is_area_director(area_id));
+  for all to authenticated
+  using (public.is_area_director(area_id))
+  with check (public.is_area_director(area_id));
+
 create policy "director_manage_report_overrides" on public.area_report_overrides
-  for all using (public.is_area_director(area_id)) with check (public.is_area_director(area_id));
+  for all to authenticated
+  using (public.is_area_director(area_id))
+  with check (public.is_area_director(area_id));
+
 create policy "director_manage_meetings" on public.meetings
-  for all using (
+  for all to authenticated
+  using (
     public.is_top_leadership() or (meeting_type = 'area' and area_id is not null and public.is_area_director(area_id))
   )
   with check (
     public.is_top_leadership() or (meeting_type = 'area' and area_id is not null and public.is_area_director(area_id))
   );
+
 create policy "director_manage_attendance" on public.meeting_attendance
-  for all using (
+  for all to authenticated
+  using (
+    exists (
+      select 1 from public.meetings m
+      where m.id = meeting_id
+        and (public.is_top_leadership() or (m.meeting_type = 'area' and m.area_id is not null and public.is_area_director(m.area_id)))
+    )
+  )
+  with check (
     exists (
       select 1 from public.meetings m
       where m.id = meeting_id
@@ -323,4 +436,6 @@ create policy "director_manage_attendance" on public.meeting_attendance
 
 -- Espaco Privado da Area: SOMENTE membros daquela area + Desenvolvedor/Capitao/Co-Capitao
 create policy "private_area_notes_all" on public.area_notes
-  for all using (public.is_in_area(area_id)) with check (public.is_in_area(area_id));
+  for all to authenticated
+  using (public.is_in_area(area_id))
+  with check (public.is_in_area(area_id));

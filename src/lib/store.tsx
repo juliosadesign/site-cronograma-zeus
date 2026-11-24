@@ -1,6 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import {
   canApproveAccounts,
   canApproveInMeeting,
@@ -11,6 +12,7 @@ import {
   isTopLeadership,
 } from "./domain";
 import { INITIAL_ZEUS_STATE } from "./seed";
+import { isSupabaseConfigured, supabase } from "./supabase";
 import type {
   AttendanceStatus,
   CalendarCategory,
@@ -27,6 +29,17 @@ const STORAGE_KEY = "zeus_aero_v1_state";
 interface ZeusContextValue {
   state: ZeusState;
   currentUser: Member;
+  authLoading: boolean;
+  sessionUser: User | null;
+  needsOnboarding: boolean;
+  authError: string | null;
+  refreshRemote: () => Promise<void>;
+  signOut: () => Promise<void>;
+  completeOnboarding: (input: {
+    fullName: string;
+    requestedRole: Role;
+    areaIds: string[];
+  }) => Promise<void>;
   switchUser: (memberId: string) => void;
   resetDemo: () => void;
   toggleMyLabPresence: () => void;
@@ -66,15 +79,30 @@ interface ZeusContextValue {
   createSprint: (input: { name: string; startDate: string; endDate: string }) => void;
   deleteSprint: (sprintId: string) => void;
   toggleReportSection: (sectionId: string) => void;
-  addReportSection: (input: { areaId: string; title: string; impactedAreaIds: string[]; externalUrl?: string }) => void;
+  addReportSection: (input: {
+    areaId: string;
+    title: string;
+    impactedAreaIds: string[];
+    externalUrl?: string;
+  }) => void;
   setReportOverride: (areaId: string, value: number | null) => void;
-  saveAreaNote: (input: { areaId: string; title: string; content: string; externalUrl?: string }) => void;
+  saveAreaNote: (input: {
+    areaId: string;
+    title: string;
+    content: string;
+    externalUrl?: string;
+  }) => void;
   deleteAreaNote: (noteId: string) => void;
   createMeeting: (input: { title: string; date: string; type: MeetingType; areaId?: string }) => void;
   setAttendance: (meetingId: string, memberId: string, status: AttendanceStatus) => void;
   createAnnouncement: (input: { title: string; content: string; pinned: boolean }) => void;
   togglePinAnnouncement: (id: string) => void;
-  simulateSignup: (input: { fullName: string; email: string; requestedRole: Role; areaIds: string[] }) => void;
+  simulateSignup: (input: {
+    fullName: string;
+    email: string;
+    requestedRole: Role;
+    areaIds: string[];
+  }) => void;
   reviewMemberAccount: (input: {
     memberId: string;
     approved: boolean;
@@ -86,8 +114,28 @@ interface ZeusContextValue {
 
 const ZeusContext = createContext<ZeusContextValue | null>(null);
 
-function uid(prefix: string): string {
+function newId(prefix: string): string {
+  if (isSupabaseConfigured && typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function emptyRemoteState(uid: string): ZeusState {
+  return {
+    currentUserId: uid,
+    competitionDate: "2027-10-28",
+    calendarEvents: [],
+    members: [],
+    sprints: [],
+    tasks: [],
+    reportSections: [],
+    reportOverrides: {},
+    meetings: [],
+    attendance: [],
+    areaNotes: [],
+    announcements: [],
+  };
 }
 
 function hydrateState(parsed: Partial<ZeusState>): ZeusState {
@@ -113,28 +161,258 @@ function hydrateState(parsed: Partial<ZeusState>): ZeusState {
   };
 }
 
-export function ZeusProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<ZeusState>(INITIAL_ZEUS_STATE);
-  const [hydrated, setHydrated] = useState(false);
+const FALLBACK_GUEST: Member = {
+  id: "guest",
+  fullName: "Convidado",
+  email: "",
+  role: "calouro",
+  accountStatus: "pending",
+  requestedRole: "calouro",
+  areaIds: [],
+  directorAreaIds: [],
+  inLabNow: false,
+  createdAt: "2026-11-24",
+};
 
-  useEffect(() => {
+export function ZeusProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<ZeusState>(
+    isSupabaseConfigured ? emptyRemoteState("guest") : INITIAL_ZEUS_STATE
+  );
+  const [hydrated, setHydrated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const loadRemoteState = useCallback(async (user: User | null) => {
+    if (!supabase || !user) {
+      setState(emptyRemoteState("guest"));
+      setNeedsOnboarding(false);
+      setAuthLoading(false);
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<ZeusState>;
-        if (parsed?.members?.length) {
-          setState(hydrateState(parsed));
-        }
+      const { data: ownProfile, error: ownErr } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (ownErr) throw ownErr;
+
+      if (!ownProfile) {
+        setNeedsOnboarding(true);
+        setState(emptyRemoteState(user.id));
+        setAuthLoading(false);
+        return;
       }
-    } catch {
-      // shortcut: corrupted localStorage falls back to INITIAL_ZEUS_STATE
+
+      setNeedsOnboarding(false);
+
+      const { data: ownAreas } = await supabase
+        .from("profile_areas")
+        .select("*")
+        .eq("profile_id", user.id);
+
+      const mapMember = (
+        p: Record<string, unknown>,
+        paRows: Array<Record<string, unknown>>
+      ): Member => {
+        const mine = paRows.filter((r) => r.profile_id === p.id);
+        return {
+          id: String(p.id),
+          fullName: String(p.full_name),
+          email: String(p.email),
+          role: p.role as Role,
+          accountStatus: p.account_status as Member["accountStatus"],
+          requestedRole: (p.requested_role ?? "calouro") as Role,
+          areaIds: mine.map((r) => String(r.area_id)),
+          directorAreaIds: mine.filter((r) => Boolean(r.is_director)).map((r) => String(r.area_id)),
+          avatarUrl: p.avatar_url ? String(p.avatar_url) : undefined,
+          course: p.course ? String(p.course) : undefined,
+          bio: p.bio ? String(p.bio) : undefined,
+          inLabNow: Boolean(p.in_lab_now),
+          labSchedule: p.lab_schedule ? String(p.lab_schedule) : undefined,
+          createdAt: String(p.created_at).slice(0, 10),
+        };
+      };
+
+      if (ownProfile.account_status !== "approved") {
+        setState({
+          ...emptyRemoteState(user.id),
+          members: [mapMember(ownProfile, ownAreas ?? [])],
+        });
+        setAuthLoading(false);
+        return;
+      }
+
+      const [
+        profilesRes,
+        paRes,
+        sprintsRes,
+        tasksRes,
+        sectionsRes,
+        overridesRes,
+        meetingsRes,
+        attendanceRes,
+        notesRes,
+        announcementsRes,
+        settingsRes,
+        calendarRes,
+      ] = await Promise.all([
+        supabase.from("profiles").select("*").order("created_at", { ascending: true }),
+        supabase.from("profile_areas").select("*"),
+        supabase.from("sprints").select("*").order("start_date", { ascending: false }),
+        supabase.from("sprint_tasks").select("*").order("created_at", { ascending: false }),
+        supabase.from("report_sections").select("*").order("created_at", { ascending: true }),
+        supabase.from("area_report_overrides").select("*"),
+        supabase.from("meetings").select("*").order("meeting_date", { ascending: false }),
+        supabase.from("meeting_attendance").select("*"),
+        supabase.from("area_notes").select("*").order("updated_at", { ascending: false }),
+        supabase.from("announcements").select("*").order("created_at", { ascending: false }),
+        supabase.from("team_settings").select("*").eq("id", 1).maybeSingle(),
+        supabase.from("calendar_events").select("*").order("event_date", { ascending: true }),
+      ]);
+
+      const paRows = paRes.data ?? [];
+      const overrides: Record<string, number | null> = {};
+      for (const row of overridesRes.data ?? []) {
+        overrides[String(row.area_id)] = row.manual_percentage;
+      }
+
+      setState({
+        currentUserId: user.id,
+        competitionDate: settingsRes.data?.competition_date ?? "2027-10-28",
+        calendarEvents: (calendarRes.data ?? []).map((ev) => ({
+          id: String(ev.id),
+          title: String(ev.title),
+          date: String(ev.event_date),
+          category: ev.category as CalendarCategory,
+          description: ev.description ? String(ev.description) : undefined,
+          areaId: ev.area_id ? String(ev.area_id) : undefined,
+        })),
+        members: (profilesRes.data ?? []).map((p) => mapMember(p, paRows)),
+        sprints: (sprintsRes.data ?? []).map((sp) => ({
+          id: String(sp.id),
+          name: String(sp.name),
+          startDate: String(sp.start_date),
+          endDate: String(sp.end_date),
+          isActive: Boolean(sp.is_active),
+        })),
+        tasks: (tasksRes.data ?? []).map((t) => ({
+          id: String(t.id),
+          sprintId: String(t.sprint_id),
+          areaId: String(t.area_id),
+          assigneeId: String(t.assignee_id),
+          createdBy: String(t.created_by),
+          title: String(t.title),
+          description: String(t.description ?? ""),
+          priority: t.priority as Priority,
+          status: t.status as TaskStatus,
+          directorValidated: Boolean(t.director_validated),
+          directorValidatedBy: t.director_validated_by ? String(t.director_validated_by) : undefined,
+          meetingApproved: Boolean(t.meeting_approved),
+          meetingApprovedBy: t.meeting_approved_by ? String(t.meeting_approved_by) : undefined,
+          externalUrl: t.external_url ? String(t.external_url) : undefined,
+          impactedAreaIds: Array.isArray(t.impacted_area_ids)
+            ? t.impacted_area_ids.map(String)
+            : [],
+          createdAt: String(t.created_at).slice(0, 10),
+          approvedAt: t.approved_at ? String(t.approved_at).slice(0, 10) : undefined,
+        })),
+        reportSections: (sectionsRes.data ?? []).map((r) => ({
+          id: String(r.id),
+          areaId: String(r.area_id),
+          title: String(r.title),
+          completed: Boolean(r.completed),
+          impactedAreaIds: Array.isArray(r.impacted_area_ids)
+            ? r.impacted_area_ids.map(String)
+            : [],
+          externalUrl: r.external_url ? String(r.external_url) : undefined,
+        })),
+        reportOverrides: overrides,
+        meetings: (meetingsRes.data ?? []).map((m) => ({
+          id: String(m.id),
+          title: String(m.title),
+          date: String(m.meeting_date),
+          type: m.meeting_type as MeetingType,
+          areaId: m.area_id ? String(m.area_id) : undefined,
+          createdBy: String(m.created_by),
+        })),
+        attendance: (attendanceRes.data ?? []).map((a) => ({
+          meetingId: String(a.meeting_id),
+          memberId: String(a.profile_id),
+          status: a.status as AttendanceStatus,
+        })),
+        areaNotes: (notesRes.data ?? []).map((n) => ({
+          id: String(n.id),
+          areaId: String(n.area_id),
+          authorId: String(n.author_id),
+          title: String(n.title),
+          content: String(n.content ?? ""),
+          externalUrl: n.external_url ? String(n.external_url) : undefined,
+          updatedAt: String(n.updated_at).slice(0, 10),
+        })),
+        announcements: (announcementsRes.data ?? []).map((a) => ({
+          id: String(a.id),
+          authorId: String(a.author_id),
+          title: String(a.title),
+          content: String(a.content),
+          pinned: Boolean(a.pinned),
+          createdAt: String(a.created_at).slice(0, 10),
+        })),
+      });
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Erro ao carregar dados do Supabase");
     } finally {
-      setHydrated(true);
+      setAuthLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!isSupabaseConfigured || !supabase) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<ZeusState>;
+          if (parsed?.members?.length) {
+            setState(hydrateState(parsed));
+          }
+        }
+      } catch {
+        // shortcut: corrupted localStorage falls back to INITIAL_ZEUS_STATE
+      } finally {
+        setHydrated(true);
+        setAuthLoading(false);
+      }
+      return;
+    }
+
+    let active = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (!active) return;
+      setSessionUser(data.user ?? null);
+      void loadRemoteState(data.user ?? null);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user ?? null;
+      setSessionUser(u);
+      void loadRemoteState(u);
+    });
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [loadRemoteState]);
+
+  useEffect(() => {
+    if (isSupabaseConfigured || !hydrated) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
@@ -143,281 +421,482 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
   }, [state, hydrated]);
 
   const currentUser = useMemo(
-    () => state.members.find((m) => m.id === state.currentUserId) ?? state.members[0],
+    () => state.members.find((m) => m.id === state.currentUserId) ?? state.members[0] ?? FALLBACK_GUEST,
     [state.members, state.currentUserId]
+  );
+
+  const runRemote = useCallback(
+    async (op: () => PromiseLike<{ error: { message: string } | null }>) => {
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await op();
+      if (error) {
+        setAuthError(error.message);
+        await loadRemoteState(sessionUser);
+      }
+    },
+    [loadRemoteState, sessionUser]
   );
 
   const value = useMemo<ZeusContextValue>(
     () => ({
       state,
       currentUser,
+      authLoading,
+      sessionUser,
+      needsOnboarding,
+      authError,
+      refreshRemote: () => loadRemoteState(sessionUser),
+      signOut: async () => {
+        if (!supabase) return;
+        await supabase.auth.signOut();
+        setSessionUser(null);
+        setState(emptyRemoteState("guest"));
+      },
+      completeOnboarding: async ({ fullName, requestedRole, areaIds }) => {
+        if (!supabase || !sessionUser) return;
+        const { error } = await supabase.rpc("register_or_bootstrap_profile", {
+          p_full_name: fullName,
+          p_email: sessionUser.email ?? "",
+          p_requested_role: requestedRole,
+          p_area_ids: areaIds.length ? areaIds : ["aerodinamica"],
+        });
+        if (error) {
+          setAuthError(error.message);
+          return;
+        }
+        await loadRemoteState(sessionUser);
+      },
       switchUser: (memberId) => setState((s) => ({ ...s, currentUserId: memberId })),
       resetDemo: () => {
+        if (isSupabaseConfigured) return;
         localStorage.removeItem(STORAGE_KEY);
         setState(INITIAL_ZEUS_STATE);
       },
-      toggleMyLabPresence: () =>
+      toggleMyLabPresence: () => {
+        const next = !currentUser.inLabNow;
         setState((s) => ({
           ...s,
           members: s.members.map((m) =>
-            m.id === s.currentUserId ? { ...m, inLabNow: !m.inLabNow } : m
+            m.id === s.currentUserId ? { ...m, inLabNow: next } : m
           ),
-        })),
-      updateMemberProfile: (memberId, patch) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (user.id !== memberId && !isTopLeadership(user.role)) return s;
-          return {
-            ...s,
-            members: s.members.map((m) => (m.id === memberId ? { ...m, ...patch } : m)),
-          };
-        }),
-      setCompetitionDate: (dateIso) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canApproveInMeeting(user) || !dateIso) return s;
-          return {
-            ...s,
-            competitionDate: dateIso,
-            calendarEvents: s.calendarEvents.map((ev) =>
-              ev.category === "competition" ? { ...ev, date: dateIso } : ev
-            ),
-          };
-        }),
-      createCalendarEvent: (input) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          const allowed =
-            canApproveInMeeting(user) ||
-            Boolean(input.areaId && canManageArea(user, input.areaId));
-          if (!allowed) return s;
-          return {
-            ...s,
-            calendarEvents: [{ id: uid("ev"), ...input }, ...s.calendarEvents],
-          };
-        }),
-      deleteCalendarEvent: (eventId) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          const ev = s.calendarEvents.find((item) => item.id === eventId);
-          if (!ev) return s;
-          const allowed =
-            canApproveInMeeting(user) || Boolean(ev.areaId && canManageArea(user, ev.areaId));
-          if (!allowed) return s;
-          return {
-            ...s,
-            calendarEvents: s.calendarEvents.filter((item) => item.id !== eventId),
-          };
-        }),
-      updateTaskStatus: (taskId, status) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          return {
-            ...s,
-            tasks: s.tasks.map((t) => {
-              if (t.id !== taskId || !canUpdateTaskStatus(user, t)) return t;
-              return {
-                ...t,
-                status,
-                directorValidated: status === "green" ? t.directorValidated : false,
-                meetingApproved: status === "green" ? t.meetingApproved : false,
-              };
-            }),
-          };
-        }),
-      toggleDirectorValidation: (taskId) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          return {
-            ...s,
-            tasks: s.tasks.map((t) => {
-              if (t.id !== taskId || !canManageArea(user, t.areaId)) return t;
-              const next = !t.directorValidated;
-              return {
-                ...t,
-                status: next ? "green" : t.status,
-                directorValidated: next,
-                directorValidatedBy: next ? user.id : undefined,
-                meetingApproved: next ? t.meetingApproved : false,
-              };
-            }),
-          };
-        }),
-      toggleMeetingApproval: (taskId) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canApproveInMeeting(user)) return s;
-          return {
-            ...s,
-            tasks: s.tasks.map((t) => {
-              if (t.id !== taskId) return t;
-              const next = !t.meetingApproved;
-              return {
-                ...t,
-                status: next ? "green" : t.status,
-                directorValidated: next ? true : t.directorValidated,
-                meetingApproved: next,
-                meetingApprovedBy: next ? user.id : undefined,
-                approvedAt: next ? new Date().toISOString().slice(0, 10) : undefined,
-              };
-            }),
-          };
-        }),
-      createTask: (input) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canManageArea(user, input.areaId)) return s;
-          return {
-            ...s,
-            tasks: [
-              {
-                id: uid("t"),
-                ...input,
-                createdBy: user.id,
-                status: "red",
-                directorValidated: false,
-                meetingApproved: false,
-                createdAt: new Date().toISOString().slice(0, 10),
-              },
-              ...s.tasks,
-            ],
-          };
-        }),
-      deleteTask: (taskId) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          const task = s.tasks.find((t) => t.id === taskId);
-          if (!task || !canManageArea(user, task.areaId)) return s;
-          return {
-            ...s,
-            tasks: s.tasks.filter((t) => t.id !== taskId),
-          };
-        }),
-      createSprint: (input) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canApproveInMeeting(user)) return s;
-          return {
-            ...s,
-            sprints: [
-              { id: uid("sp"), ...input, isActive: true },
-              ...s.sprints.map((sp) => ({ ...sp, isActive: false })),
-            ],
-          };
-        }),
-      deleteSprint: (sprintId) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canApproveInMeeting(user)) return s;
-          const remaining = s.sprints.filter((sp) => sp.id !== sprintId);
-          const hasActive = remaining.some((sp) => sp.isActive);
-          const nextSprints =
-            !hasActive && remaining.length > 0
-              ? remaining.map((sp, i) => (i === 0 ? { ...sp, isActive: true } : sp))
-              : remaining;
-          return {
-            ...s,
-            sprints: nextSprints,
-            tasks: s.tasks.filter((t) => t.sprintId !== sprintId),
-          };
-        }),
-      toggleReportSection: (sectionId) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          return {
-            ...s,
-            reportSections: s.reportSections.map((r) =>
-              r.id === sectionId && canManageArea(user, r.areaId)
-                ? { ...r, completed: !r.completed }
-                : r
-            ),
-          };
-        }),
-      addReportSection: (input) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canManageArea(user, input.areaId)) return s;
-          return {
-            ...s,
-            reportSections: [
-              ...s.reportSections,
-              { id: uid("r"), completed: false, ...input },
-            ],
-          };
-        }),
-      setReportOverride: (areaId, value) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canManageArea(user, areaId)) return s;
-          return {
-            ...s,
-            reportOverrides: { ...s.reportOverrides, [areaId]: value },
-          };
-        }),
-      saveAreaNote: (input) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canViewPrivateArea(user, input.areaId)) return s;
-          return {
-            ...s,
-            areaNotes: [
-              {
-                id: uid("an"),
-                ...input,
-                authorId: user.id,
-                updatedAt: new Date().toISOString().slice(0, 10),
-              },
-              ...s.areaNotes,
-            ],
-          };
-        }),
-      deleteAreaNote: (noteId) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          const note = s.areaNotes.find((n) => n.id === noteId);
-          if (!note || !canManageArea(user, note.areaId)) return s;
-          return {
-            ...s,
-            areaNotes: s.areaNotes.filter((n) => n.id !== noteId),
-          };
-        }),
-      createMeeting: (input) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          const allowed =
-            input.type === "general"
-              ? canApproveInMeeting(user)
-              : Boolean(input.areaId && canManageArea(user, input.areaId));
-          if (!allowed) return s;
-          const id = uid("mt");
-          const approvedMembers = s.members.filter(
-            (m) =>
-              m.accountStatus === "approved" &&
-              (input.type === "general" || (input.areaId ? m.areaIds.includes(input.areaId) : false))
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("profiles").update({ in_lab_now: next }).eq("id", currentUser.id)
           );
-          return {
-            ...s,
-            meetings: [{ id, ...input, createdBy: user.id }, ...s.meetings],
-            attendance: [
-              ...s.attendance,
-              ...approvedMembers.map((m) => ({
-                meetingId: id,
-                memberId: m.id,
-                status: "present" as AttendanceStatus,
-              })),
-            ],
-          };
-        }),
-      setAttendance: (meetingId, memberId, status) =>
+        }
+      },
+      updateMemberProfile: (memberId, patch) => {
+        if (currentUser.id !== memberId && !isTopLeadership(currentUser.role)) return;
+        setState((s) => ({
+          ...s,
+          members: s.members.map((m) => (m.id === memberId ? { ...m, ...patch } : m)),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          const dbPatch: Record<string, unknown> = {};
+          if (patch.avatarUrl !== undefined) dbPatch.avatar_url = patch.avatarUrl;
+          if (patch.bio !== undefined) dbPatch.bio = patch.bio;
+          if (patch.course !== undefined) dbPatch.course = patch.course;
+          if (patch.labSchedule !== undefined) dbPatch.lab_schedule = patch.labSchedule;
+          if (patch.inLabNow !== undefined) dbPatch.in_lab_now = patch.inLabNow;
+          void runRemote(() => supabase!.from("profiles").update(dbPatch).eq("id", memberId));
+        }
+      },
+      setCompetitionDate: (dateIso) => {
+        if (!canApproveInMeeting(currentUser) || !dateIso) return;
+        setState((s) => ({
+          ...s,
+          competitionDate: dateIso,
+          calendarEvents: s.calendarEvents.map((ev) =>
+            ev.category === "competition" ? { ...ev, date: dateIso } : ev
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("team_settings").upsert({ id: 1, competition_date: dateIso })
+          );
+        }
+      },
+      createCalendarEvent: (input) => {
+        const allowed =
+          canApproveInMeeting(currentUser) ||
+          Boolean(input.areaId && canManageArea(currentUser, input.areaId));
+        if (!allowed) return;
+        const id = newId("ev");
+        setState((s) => ({
+          ...s,
+          calendarEvents: [{ id, ...input }, ...s.calendarEvents],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("calendar_events").insert({
+              id,
+              title: input.title,
+              event_date: input.date,
+              category: input.category,
+              description: input.description ?? null,
+              area_id: input.areaId ?? null,
+              created_by: currentUser.id,
+            })
+          );
+        }
+      },
+      deleteCalendarEvent: (eventId) => {
+        const ev = state.calendarEvents.find((item) => item.id === eventId);
+        if (!ev) return;
+        const allowed =
+          canApproveInMeeting(currentUser) || Boolean(ev.areaId && canManageArea(currentUser, ev.areaId));
+        if (!allowed) return;
+        setState((s) => ({
+          ...s,
+          calendarEvents: s.calendarEvents.filter((item) => item.id !== eventId),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() => supabase!.from("calendar_events").delete().eq("id", eventId));
+        }
+      },
+      updateTaskStatus: (taskId, status) => {
+        const target = state.tasks.find((t) => t.id === taskId);
+        if (!target || !canUpdateTaskStatus(currentUser, target)) return;
+        const nextDirector = status === "green" ? target.directorValidated : false;
+        const nextMeeting = status === "green" ? target.meetingApproved : false;
+        setState((s) => ({
+          ...s,
+          tasks: s.tasks.map((t) =>
+            t.id === taskId
+              ? { ...t, status, directorValidated: nextDirector, meetingApproved: nextMeeting }
+              : t
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!
+              .from("sprint_tasks")
+              .update({
+                status,
+                director_validated: nextDirector,
+                meeting_approved: nextMeeting,
+              })
+              .eq("id", taskId)
+          );
+        }
+      },
+      toggleDirectorValidation: (taskId) => {
+        const target = state.tasks.find((t) => t.id === taskId);
+        if (!target || !canManageArea(currentUser, target.areaId)) return;
+        const next = !target.directorValidated;
+        setState((s) => ({
+          ...s,
+          tasks: s.tasks.map((t) =>
+            t.id === taskId
+              ? {
+                  ...t,
+                  status: next ? "green" : t.status,
+                  directorValidated: next,
+                  directorValidatedBy: next ? currentUser.id : undefined,
+                  meetingApproved: next ? t.meetingApproved : false,
+                }
+              : t
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!
+              .from("sprint_tasks")
+              .update({
+                status: next ? "green" : target.status,
+                director_validated: next,
+                director_validated_by: next ? currentUser.id : null,
+                meeting_approved: next ? target.meetingApproved : false,
+              })
+              .eq("id", taskId)
+          );
+        }
+      },
+      toggleMeetingApproval: (taskId) => {
+        if (!canApproveInMeeting(currentUser)) return;
+        const target = state.tasks.find((t) => t.id === taskId);
+        if (!target) return;
+        const next = !target.meetingApproved;
+        const today = new Date().toISOString().slice(0, 10);
+        setState((s) => ({
+          ...s,
+          tasks: s.tasks.map((t) =>
+            t.id === taskId
+              ? {
+                  ...t,
+                  status: next ? "green" : t.status,
+                  directorValidated: next ? true : t.directorValidated,
+                  meetingApproved: next,
+                  meetingApprovedBy: next ? currentUser.id : undefined,
+                  approvedAt: next ? today : undefined,
+                }
+              : t
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!
+              .from("sprint_tasks")
+              .update({
+                status: next ? "green" : target.status,
+                director_validated: next ? true : target.directorValidated,
+                meeting_approved: next,
+                meeting_approved_by: next ? currentUser.id : null,
+                approved_at: next ? new Date().toISOString() : null,
+              })
+              .eq("id", taskId)
+          );
+        }
+      },
+      createTask: (input) => {
+        if (!canManageArea(currentUser, input.areaId)) return;
+        const id = newId("t");
+        setState((s) => ({
+          ...s,
+          tasks: [
+            {
+              id,
+              ...input,
+              createdBy: currentUser.id,
+              status: "red",
+              directorValidated: false,
+              meetingApproved: false,
+              createdAt: new Date().toISOString().slice(0, 10),
+            },
+            ...s.tasks,
+          ],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("sprint_tasks").insert({
+              id,
+              sprint_id: input.sprintId,
+              area_id: input.areaId,
+              assignee_id: input.assigneeId,
+              created_by: currentUser.id,
+              title: input.title,
+              description: input.description,
+              priority: input.priority,
+              status: "red",
+              external_url: input.externalUrl ?? null,
+              impacted_area_ids: input.impactedAreaIds,
+            })
+          );
+        }
+      },
+      deleteTask: (taskId) => {
+        const task = state.tasks.find((t) => t.id === taskId);
+        if (!task || !canManageArea(currentUser, task.areaId)) return;
+        setState((s) => ({
+          ...s,
+          tasks: s.tasks.filter((t) => t.id !== taskId),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() => supabase!.from("sprint_tasks").delete().eq("id", taskId));
+        }
+      },
+      createSprint: (input) => {
+        if (!canApproveInMeeting(currentUser)) return;
+        const id = newId("sp");
+        setState((s) => ({
+          ...s,
+          sprints: [
+            { id, ...input, isActive: true },
+            ...s.sprints.map((sp) => ({ ...sp, isActive: false })),
+          ],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void (async () => {
+            await supabase.from("sprints").update({ is_active: false }).neq("id", id);
+            await runRemote(() =>
+              supabase!.from("sprints").insert({
+                id,
+                name: input.name,
+                start_date: input.startDate,
+                end_date: input.endDate,
+                is_active: true,
+              })
+            );
+          })();
+        }
+      },
+      deleteSprint: (sprintId) => {
+        if (!canApproveInMeeting(currentUser)) return;
+        const remaining = state.sprints.filter((sp) => sp.id !== sprintId);
+        const hasActive = remaining.some((sp) => sp.isActive);
+        const nextSprints =
+          !hasActive && remaining.length > 0
+            ? remaining.map((sp, i) => (i === 0 ? { ...sp, isActive: true } : sp))
+            : remaining;
+        setState((s) => ({
+          ...s,
+          sprints: nextSprints,
+          tasks: s.tasks.filter((t) => t.sprintId !== sprintId),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void (async () => {
+            await runRemote(() => supabase!.from("sprints").delete().eq("id", sprintId));
+            if (!hasActive && nextSprints[0]) {
+              await supabase
+                .from("sprints")
+                .update({ is_active: true })
+                .eq("id", nextSprints[0].id);
+            }
+          })();
+        }
+      },
+      toggleReportSection: (sectionId) => {
+        const target = state.reportSections.find((r) => r.id === sectionId);
+        if (!target || !canManageArea(currentUser, target.areaId)) return;
+        const next = !target.completed;
+        setState((s) => ({
+          ...s,
+          reportSections: s.reportSections.map((r) =>
+            r.id === sectionId ? { ...r, completed: next } : r
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("report_sections").update({ completed: next }).eq("id", sectionId)
+          );
+        }
+      },
+      addReportSection: (input) => {
+        if (!canManageArea(currentUser, input.areaId)) return;
+        const id = newId("r");
+        setState((s) => ({
+          ...s,
+          reportSections: [...s.reportSections, { id, completed: false, ...input }],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("report_sections").insert({
+              id,
+              area_id: input.areaId,
+              title: input.title,
+              completed: false,
+              impacted_area_ids: input.impactedAreaIds,
+              external_url: input.externalUrl ?? null,
+            })
+          );
+        }
+      },
+      setReportOverride: (areaId, value) => {
+        if (!canManageArea(currentUser, areaId)) return;
+        setState((s) => ({
+          ...s,
+          reportOverrides: { ...s.reportOverrides, [areaId]: value },
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("area_report_overrides").upsert({
+              area_id: areaId,
+              manual_percentage: value,
+              updated_by: currentUser.id,
+            })
+          );
+        }
+      },
+      saveAreaNote: (input) => {
+        if (!canViewPrivateArea(currentUser, input.areaId)) return;
+        const id = newId("an");
+        setState((s) => ({
+          ...s,
+          areaNotes: [
+            {
+              id,
+              ...input,
+              authorId: currentUser.id,
+              updatedAt: new Date().toISOString().slice(0, 10),
+            },
+            ...s.areaNotes,
+          ],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("area_notes").insert({
+              id,
+              area_id: input.areaId,
+              author_id: currentUser.id,
+              title: input.title,
+              content: input.content,
+              external_url: input.externalUrl ?? null,
+            })
+          );
+        }
+      },
+      deleteAreaNote: (noteId) => {
+        const note = state.areaNotes.find((n) => n.id === noteId);
+        if (!note || !canManageArea(currentUser, note.areaId)) return;
+        setState((s) => ({
+          ...s,
+          areaNotes: s.areaNotes.filter((n) => n.id !== noteId),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() => supabase!.from("area_notes").delete().eq("id", noteId));
+        }
+      },
+      createMeeting: (input) => {
+        const allowed =
+          input.type === "general"
+            ? canApproveInMeeting(currentUser)
+            : Boolean(input.areaId && canManageArea(currentUser, input.areaId));
+        if (!allowed) return;
+        const id = newId("mt");
+        const approvedMembers = state.members.filter(
+          (m) =>
+            m.accountStatus === "approved" &&
+            (input.type === "general" || (input.areaId ? m.areaIds.includes(input.areaId) : false))
+        );
+        setState((s) => ({
+          ...s,
+          meetings: [{ id, ...input, createdBy: currentUser.id }, ...s.meetings],
+          attendance: [
+            ...s.attendance,
+            ...approvedMembers.map((m) => ({
+              meetingId: id,
+              memberId: m.id,
+              status: "present" as AttendanceStatus,
+            })),
+          ],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void (async () => {
+            const { error } = await supabase.from("meetings").insert({
+              id,
+              title: input.title,
+              meeting_date: input.date,
+              meeting_type: input.type,
+              area_id: input.areaId ?? null,
+              created_by: currentUser.id,
+            });
+            if (error) {
+              setAuthError(error.message);
+              await loadRemoteState(sessionUser);
+              return;
+            }
+            if (approvedMembers.length > 0) {
+              await supabase.from("meeting_attendance").insert(
+                approvedMembers.map((m) => ({
+                  meeting_id: id,
+                  profile_id: m.id,
+                  status: "present",
+                }))
+              );
+            }
+          })();
+        }
+      },
+      setAttendance: (meetingId, memberId, status) => {
+        const meeting = state.meetings.find((m) => m.id === meetingId);
+        if (!meeting) return;
+        const allowed =
+          meeting.type === "general"
+            ? canApproveInMeeting(currentUser)
+            : Boolean(meeting.areaId && canManageArea(currentUser, meeting.areaId));
+        if (!allowed) return;
         setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          const meeting = s.meetings.find((m) => m.id === meetingId);
-          if (!meeting) return s;
-          const allowed =
-            meeting.type === "general"
-              ? canApproveInMeeting(user)
-              : Boolean(meeting.areaId && canManageArea(user, meeting.areaId));
-          if (!allowed) return s;
           const exists = s.attendance.some(
             (a) => a.meetingId === meetingId && a.memberId === memberId
           );
@@ -429,42 +908,67 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
                 )
               : [...s.attendance, { meetingId, memberId, status }],
           };
-        }),
-      createAnnouncement: (input) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canManageAnnouncements(user)) return s;
-          return {
-            ...s,
-            announcements: [
-              {
-                id: uid("ann"),
-                ...input,
-                authorId: user.id,
-                createdAt: new Date().toISOString().slice(0, 10),
-              },
-              ...s.announcements,
-            ],
-          };
-        }),
-      togglePinAnnouncement: (id) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canManageAnnouncements(user)) return s;
-          return {
-            ...s,
-            announcements: s.announcements.map((a) =>
-              a.id === id ? { ...a, pinned: !a.pinned } : a
-            ),
-          };
-        }),
-      simulateSignup: (input) =>
+        });
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("meeting_attendance").upsert({
+              meeting_id: meetingId,
+              profile_id: memberId,
+              status,
+            })
+          );
+        }
+      },
+      createAnnouncement: (input) => {
+        if (!canManageAnnouncements(currentUser)) return;
+        const id = newId("ann");
+        setState((s) => ({
+          ...s,
+          announcements: [
+            {
+              id,
+              ...input,
+              authorId: currentUser.id,
+              createdAt: new Date().toISOString().slice(0, 10),
+            },
+            ...s.announcements,
+          ],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("announcements").insert({
+              id,
+              author_id: currentUser.id,
+              title: input.title,
+              content: input.content,
+              pinned: input.pinned,
+            })
+          );
+        }
+      },
+      togglePinAnnouncement: (id) => {
+        if (!canManageAnnouncements(currentUser)) return;
+        const target = state.announcements.find((a) => a.id === id);
+        if (!target) return;
+        const next = !target.pinned;
+        setState((s) => ({
+          ...s,
+          announcements: s.announcements.map((a) => (a.id === id ? { ...a, pinned: next } : a)),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("announcements").update({ pinned: next }).eq("id", id)
+          );
+        }
+      },
+      simulateSignup: (input) => {
+        if (isSupabaseConfigured) return;
         setState((s) => ({
           ...s,
           members: [
             ...s.members,
             {
-              id: uid("m"),
+              id: newId("m"),
               fullName: input.fullName,
               email: input.email,
               role: "calouro",
@@ -476,28 +980,58 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
               createdAt: new Date().toISOString().slice(0, 10),
             },
           ],
-        })),
-      reviewMemberAccount: (input) =>
-        setState((s) => {
-          const user = s.members.find((m) => m.id === s.currentUserId) ?? s.members[0];
-          if (!canApproveAccounts(user)) return s;
-          return {
-            ...s,
-            members: s.members.map((m) =>
-              m.id === input.memberId
-                ? {
-                    ...m,
-                    accountStatus: input.approved ? "approved" : "rejected",
-                    role: input.role,
-                    areaIds: input.areaIds,
-                    directorAreaIds: input.role === "diretor" ? input.directorAreaIds : [],
-                  }
-                : m
-            ),
-          };
-        }),
+        }));
+      },
+      reviewMemberAccount: (input) => {
+        if (!canApproveAccounts(currentUser)) return;
+        const nextStatus = input.approved ? "approved" : "rejected";
+        const nextDirectorAreas = input.role === "diretor" ? input.directorAreaIds : [];
+        setState((s) => ({
+          ...s,
+          members: s.members.map((m) =>
+            m.id === input.memberId
+              ? {
+                  ...m,
+                  accountStatus: nextStatus,
+                  role: input.role,
+                  areaIds: input.areaIds,
+                  directorAreaIds: nextDirectorAreas,
+                }
+              : m
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void (async () => {
+            await supabase
+              .from("profiles")
+              .update({ account_status: nextStatus, role: input.role })
+              .eq("id", input.memberId);
+            await supabase.from("profile_areas").delete().eq("profile_id", input.memberId);
+            if (input.areaIds.length > 0) {
+              await runRemote(() =>
+                supabase!.from("profile_areas").insert(
+                  input.areaIds.map((areaId) => ({
+                    profile_id: input.memberId,
+                    area_id: areaId,
+                    is_director: nextDirectorAreas.includes(areaId),
+                  }))
+                )
+              );
+            }
+          })();
+        }
+      },
     }),
-    [state, currentUser]
+    [
+      state,
+      currentUser,
+      authLoading,
+      sessionUser,
+      needsOnboarding,
+      authError,
+      loadRemoteState,
+      runRemote,
+    ]
   );
 
   return <ZeusContext.Provider value={value}>{children}</ZeusContext.Provider>;

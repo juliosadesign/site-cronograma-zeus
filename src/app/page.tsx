@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AdminView } from "@/components/AdminView";
 import { AppShell, type NavTab } from "@/components/AppShell";
 import { AreasView } from "@/components/AreasView";
+import { AuthGate } from "@/components/AuthGate";
 import { CalendarView } from "@/components/CalendarView";
 import { DashboardView } from "@/components/DashboardView";
 import { MeetingsView } from "@/components/MeetingsView";
@@ -16,27 +17,29 @@ export default function HomePage() {
   const [profileMemberId, setProfileMemberId] = useState<string | null>(null);
 
   return (
-    <AppShell
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-      onOpenProfile={setProfileMemberId}
-    >
-      <div key={activeTab} className="zeus-tab-enter">
-        {activeTab === "dashboard" && (
-          <DashboardView onNavigate={setActiveTab} onOpenProfile={setProfileMemberId} />
-        )}
-        {activeTab === "sprints" && <SprintsView onOpenProfile={setProfileMemberId} />}
-        {activeTab === "areas" && <AreasView onOpenProfile={setProfileMemberId} />}
-        {activeTab === "calendar" && <CalendarView />}
-        {activeTab === "ranking" && <RankingView onOpenProfile={setProfileMemberId} />}
-        {activeTab === "meetings" && <MeetingsView onOpenProfile={setProfileMemberId} />}
-        {activeTab === "admin" && <AdminView />}
-      </div>
+    <AuthGate>
+      <AppShell
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onOpenProfile={setProfileMemberId}
+      >
+        <div key={activeTab} className="zeus-tab-enter">
+          {activeTab === "dashboard" && (
+            <DashboardView onNavigate={setActiveTab} onOpenProfile={setProfileMemberId} />
+          )}
+          {activeTab === "sprints" && <SprintsView onOpenProfile={setProfileMemberId} />}
+          {activeTab === "areas" && <AreasView onOpenProfile={setProfileMemberId} />}
+          {activeTab === "calendar" && <CalendarView />}
+          {activeTab === "ranking" && <RankingView onOpenProfile={setProfileMemberId} />}
+          {activeTab === "meetings" && <MeetingsView onOpenProfile={setProfileMemberId} />}
+          {activeTab === "admin" && <AdminView />}
+        </div>
 
-      <MemberProfileModal
-        memberId={profileMemberId}
-        onClose={() => setProfileMemberId(null)}
-      />
-    </AppShell>
+        <MemberProfileModal
+          memberId={profileMemberId}
+          onClose={() => setProfileMemberId(null)}
+        />
+      </AppShell>
+    </AuthGate>
   );
 }
