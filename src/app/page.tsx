@@ -7,6 +7,7 @@ import { AreasView } from "@/components/AreasView";
 import { AuthGate } from "@/components/AuthGate";
 import { CalendarView } from "@/components/CalendarView";
 import { DashboardView } from "@/components/DashboardView";
+import { KnowledgeGraphView } from "@/components/KnowledgeGraphView";
 import { MeetingsView } from "@/components/MeetingsView";
 import { MemberProfileModal } from "@/components/MemberProfileModal";
 import { RankingView } from "@/components/RankingView";
@@ -29,6 +30,7 @@ export default function HomePage() {
           )}
           {activeTab === "sprints" && <SprintsView onOpenProfile={setProfileMemberId} />}
           {activeTab === "areas" && <AreasView onOpenProfile={setProfileMemberId} />}
+          {activeTab === "graph" && <KnowledgeGraphView />}
           {activeTab === "calendar" && <CalendarView />}
           {activeTab === "ranking" && <RankingView onOpenProfile={setProfileMemberId} />}
           {activeTab === "meetings" && <MeetingsView onOpenProfile={setProfileMemberId} />}

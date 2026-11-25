@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Award, CalendarCheck, Camera, CheckCheck, Clock, MapPin, Save, X } from "lucide-react";
+import { Award, CalendarCheck, Camera, CheckCheck, Clock, MapPin, Plus, Save, Trash2, X } from "lucide-react";
 import {
   computeAttendanceStats,
   computeMemberPoints,
@@ -48,13 +48,18 @@ export function MemberProfileModal({
   memberId: string | null;
   onClose: () => void;
 }) {
-  const { state, currentUser, updateMemberProfile } = useZeus();
+  const { state, currentUser, updateMemberProfile, updateMemberLabSlots } = useZeus();
   const member = state.members.find((m) => m.id === memberId) ?? null;
 
   const [editing, setEditing] = useState(false);
   const [course, setCourse] = useState("");
   const [bio, setBio] = useState("");
   const [labSchedule, setLabSchedule] = useState("");
+  const [slotDay, setSlotDay] = useState(1);
+  const [slotStart, setSlotStart] = useState("14:00");
+  const [slotEnd, setSlotEnd] = useState("18:00");
+
+  const WEEKDAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
   if (!member) return null;
 
@@ -185,11 +190,87 @@ export function MemberProfileModal({
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--hairline)] text-[11px] text-[var(--ink-subtle)]">
                 <span className="inline-flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-amber-500" />
-                  Horários previstos no laboratório:{" "}
+                  Resumo de horários:{" "}
                   <strong className="text-[var(--ink)]">
-                    {member.labSchedule || "A definir (grade da faculdade na V2)"}
+                    {member.labSchedule || "Adicione suas janelas abaixo"}
                   </strong>
                 </span>
+              </div>
+
+              {/* Grade de janelas automaticas */}
+              <div className="pt-2 border-t border-[var(--hairline)] space-y-2">
+                <div className="text-[11px] font-medium text-[var(--ink-subtle)]">
+                  Janelas livres na faculdade (detecção automática de &ldquo;Na Sala Agora&rdquo;):
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(member.labSlots ?? []).length === 0 ? (
+                    <span className="text-[11px] text-[var(--ink-subtle)]">Nenhuma janela cadastrada.</span>
+                  ) : (
+                    (member.labSlots ?? []).map((slot, idx) => (
+                      <span
+                        key={`${slot.day}-${slot.start}-${idx}`}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 font-mono text-[10px] text-sky-300"
+                      >
+                        {WEEKDAY_SHORT[slot.day]} {slot.start}–{slot.end}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateMemberLabSlots(
+                                member.id,
+                                (member.labSlots ?? []).filter((_, i) => i !== idx)
+                              )
+                            }
+                            className="hover:text-rose-400"
+                          >
+                            <Trash2 className="h-2.5 w-2.5" />
+                          </button>
+                        )}
+                      </span>
+                    ))
+                  )}
+                </div>
+
+                {canEdit && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <select
+                      value={slotDay}
+                      onChange={(e) => setSlotDay(Number(e.target.value))}
+                      className="h-7 rounded border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-1.5 text-[11px]"
+                    >
+                      {WEEKDAY_SHORT.map((d, i) => (
+                        <option key={d} value={i}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="time"
+                      value={slotStart}
+                      onChange={(e) => setSlotStart(e.target.value)}
+                      className="h-7 rounded border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-1.5 text-[11px]"
+                    />
+                    <span className="text-[11px] text-[var(--ink-subtle)]">até</span>
+                    <input
+                      type="time"
+                      value={slotEnd}
+                      onChange={(e) => setSlotEnd(e.target.value)}
+                      className="h-7 rounded border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-1.5 text-[11px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateMemberLabSlots(member.id, [
+                          ...(member.labSlots ?? []),
+                          { day: slotDay, start: slotStart, end: slotEnd },
+                        ])
+                      }
+                      className="h-7 inline-flex items-center gap-1 rounded bg-blue-600 hover:bg-blue-500 px-2 text-[11px] font-medium text-white"
+                    >
+                      <Plus className="h-3 w-3" /> Janela
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           ) : (

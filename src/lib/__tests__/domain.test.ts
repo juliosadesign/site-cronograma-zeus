@@ -6,13 +6,18 @@ import {
   canUpdateTaskStatus,
   canViewPrivateArea,
   computeAttendanceStats,
+  computeConceptVoteTally,
   computeDaysUntil,
   computeForecastTarget,
   computeMemberPoints,
+  computeProjectedReportScore,
   computeReportPercentage,
   computeTeamReportPercentage,
+  computeAreaGraphEdges,
   evaluateScheduleHealth,
   getInitials,
+  getMemberLabStatus,
+  isWithinLabSlots,
   projectTeamProgressAt,
   ZEUS_AREAS,
 } from "../domain.ts";
@@ -125,5 +130,30 @@ assert.equal(evaluateScheduleHealth(10, 200).status, "behind");
 
 assert.ok(projectTeamProgressAt(55, 250, 100) >= 55);
 assert.ok(projectTeamProgressAt(55, 250, 300) <= 55);
+
+// V2: Lab slots, pontuacao projetada, grafo Obsidian e enquete conceitual
+const slots = [{ day: 2, start: "14:00", end: "18:00" }];
+assert.equal(isWithinLabSlots(slots, 2, 15 * 60), true);
+assert.equal(isWithinLabSlots(slots, 2, 19 * 60), false);
+assert.equal(getMemberLabStatus({ ...dev, inLabNow: true, labSlots: [] }, 2, 15 * 60), "checked_in");
+assert.equal(getMemberLabStatus({ ...dev, inLabNow: false, labSlots: slots }, 2, 15 * 60), "scheduled");
+assert.equal(getMemberLabStatus({ ...dev, inLabNow: false, labSlots: slots }, 1, 15 * 60), "away");
+
+const scoredSections: ReportSection[] = [
+  { id: "s1", areaId: "aerodinamica", title: "A", completed: true, impactedAreaIds: ["desempenho"], maxScore: 20 },
+  { id: "s2", areaId: "aerodinamica", title: "B", completed: false, impactedAreaIds: ["cargas"], maxScore: 10 },
+];
+assert.deepEqual(computeProjectedReportScore(scoredSections, "aerodinamica"), {
+  earned: 20,
+  max: 30,
+  percentage: 67,
+});
+
+const edges = computeAreaGraphEdges(tasks, scoredSections);
+assert.equal(edges.length, 2);
+assert.equal(edges[0].from, "aerodinamica");
+
+const tally = computeConceptVoteTally({ a: "monoplano", b: "asa_voadora", c: "monoplano" });
+assert.deepEqual(tally, { monoplano: 2, biplano: 0, asa_voadora: 1 });
 
 console.log("All Zeus domain & RBAC tests passed!");

@@ -5,6 +5,7 @@ import { CheckSquare, ExternalLink, GitBranch, Lock, Plus, Square, Trash2 } from
 import {
   canManageArea,
   canViewPrivateArea,
+  computeProjectedReportScore,
   computeReportPercentage,
   computeTeamReportPercentage,
   getAreaName,
@@ -25,6 +26,7 @@ export function AreasView({
     currentUser,
     toggleReportSection,
     addReportSection,
+    updateReportSectionScore,
     setReportOverride,
     saveAreaNote,
     deleteAreaNote,
@@ -47,6 +49,8 @@ export function AreasView({
   const areaSections = state.reportSections.filter((r) => r.areaId === area.id);
   const override = state.reportOverrides[area.id] ?? null;
   const pct = computeReportPercentage(area.id, state.reportSections, override);
+  const areaScore = computeProjectedReportScore(state.reportSections, area.id);
+  const teamScore = computeProjectedReportScore(state.reportSections);
   const { teamPercentage } = computeTeamReportPercentage(
     ZEUS_AREAS,
     state.reportSections,
@@ -119,7 +123,7 @@ export function AreasView({
             <div>
               <div className="text-[11px] text-[var(--ink-subtle)]">Relatório Geral da Equipe</div>
               <div className="font-mono text-sm font-semibold text-sky-400">
-                {teamPercentage}% (11 áreas)
+                {teamPercentage}% · {teamScore.earned}/{teamScore.max} pts
               </div>
             </div>
           </div>
@@ -129,7 +133,7 @@ export function AreasView({
             <div>
               <div className="text-[11px] text-[var(--ink-subtle)]">Relatório · {area.shortCode}</div>
               <div className="font-mono text-sm font-semibold text-amber-400">
-                {pct}% ({area.name})
+                {pct}% · {areaScore.earned}/{areaScore.max} pts
               </div>
             </div>
           </div>
@@ -283,13 +287,32 @@ export function AreasView({
                       {sec.title}
                     </span>
                   </button>
-                  {sec.impactedAreaIds.length > 0 && (
-                    <div className="flex flex-wrap gap-1 shrink-0">
-                      {sec.impactedAreaIds.map((id) => (
-                        <AreaChip key={id} areaId={id} subtle />
-                      ))}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {sec.impactedAreaIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {sec.impactedAreaIds.map((id) => (
+                          <AreaChip key={id} areaId={id} subtle />
+                        ))}
+                      </div>
+                    )}
+                    {canEditArea ? (
+                      <label className="inline-flex items-center gap-1 font-mono text-[10px] text-[var(--ink-subtle)]">
+                        <input
+                          type="number"
+                          min={0}
+                          max={200}
+                          value={sec.maxScore ?? 10}
+                          onChange={(e) => updateReportSectionScore(sec.id, Number(e.target.value))}
+                          className="w-12 rounded border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-1 py-0.5 text-right text-[11px] text-[var(--ink)]"
+                        />
+                        pts
+                      </label>
+                    ) : (
+                      <span className="font-mono text-[10px] text-[var(--ink-subtle)]">
+                        {sec.maxScore ?? 10} pts
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))
             )}

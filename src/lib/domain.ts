@@ -1,5 +1,7 @@
 import type {
+  AircraftConcept,
   Area,
+  LabSlot,
   MeetingAttendance,
   Member,
   Priority,
@@ -267,4 +269,115 @@ export function projectTeamProgressAt(
   }
   const paceRatio = Math.max(0.45, Math.min(1.35, actualPct / currentTarget));
   return clampPct(actualPct + (futureTarget - currentTarget) * paceRatio);
+}
+
+function parseMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+export function isWithinLabSlots(
+  slots: LabSlot[] | undefined,
+  dayOfWeek: number,
+  minutesFromMidnight: number
+): boolean {
+  if (!slots || slots.length === 0) return false;
+  return slots.some((slot) => {
+    if (slot.day !== dayOfWeek) return false;
+    const start = parseMinutes(slot.start);
+    const end = parseMinutes(slot.end);
+    return minutesFromMidnight >= start && minutesFromMidnight <= end;
+  });
+}
+
+export function getMemberLabStatus(
+  member: Member,
+  dayOfWeek: number,
+  minutesFromMidnight: number
+): "checked_in" | "scheduled" | "away" {
+  if (member.inLabNow) return "checked_in";
+  if (isWithinLabSlots(member.labSlots, dayOfWeek, minutesFromMidnight)) {
+    return "scheduled";
+  }
+  return "away";
+}
+
+export function computeProjectedReportScore(
+  sections: ReportSection[],
+  areaId?: string
+): { earned: number; max: number; percentage: number } {
+  const target = areaId ? sections.filter((s) => s.areaId === areaId) : sections;
+  let earned = 0;
+  let max = 0;
+  for (const s of target) {
+    const pts = typeof s.maxScore === "number" && s.maxScore >= 0 ? s.maxScore : 10;
+    max += pts;
+    if (s.completed) earned += pts;
+  }
+  const percentage = max === 0 ? 0 : Math.round((earned / max) * 100);
+  return { earned, max, percentage };
+}
+
+export interface AreaGraphEdge {
+  from: string;
+  to: string;
+  weight: number;
+  criticalCount: number;
+  items: Array<{
+    id: string;
+    title: string;
+    kind: "task" | "report";
+    priority?: Priority;
+  }>;
+}
+
+export function computeAreaGraphEdges(
+  tasks: SprintTask[],
+  sections: ReportSection[]
+): AreaGraphEdge[] {
+  const map = new Map<string, AreaGraphEdge>();
+  const ensure = (from: string, to: string) => {
+    const key = `${from}->${to}`;
+    let edge = map.get(key);
+    if (!edge) {
+      edge = { from, to, weight: 0, criticalCount: 0, items: [] };
+      map.set(key, edge);
+    }
+    return edge;
+  };
+
+  for (const t of tasks) {
+    for (const to of t.impactedAreaIds) {
+      if (to === t.areaId) continue;
+      const edge = ensure(t.areaId, to);
+      edge.weight += 1;
+      if (t.priority === "critical" || t.priority === "high") edge.criticalCount += 1;
+      edge.items.push({ id: t.id, title: t.title, kind: "task", priority: t.priority });
+    }
+  }
+
+  for (const r of sections) {
+    for (const to of r.impactedAreaIds) {
+      if (to === r.areaId) continue;
+      const edge = ensure(r.areaId, to);
+      edge.weight += 1;
+      edge.items.push({ id: r.id, title: r.title, kind: "report" });
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.weight - a.weight);
+}
+
+export function computeConceptVoteTally(
+  votes: Record<string, AircraftConcept>
+): Record<AircraftConcept, number> {
+  const tally: Record<AircraftConcept, number> = {
+    monoplano: 0,
+    biplano: 0,
+    asa_voadora: 0,
+  };
+  for (const choice of Object.values(votes)) {
+    if (choice in tally) tally[choice] += 1;
+  }
+  return tally;
 }

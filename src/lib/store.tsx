@@ -14,10 +14,13 @@ import {
 import { INITIAL_ZEUS_STATE } from "./seed";
 import { isSupabaseConfigured, supabase } from "./supabase";
 import type {
+  AircraftConcept,
   AttendanceStatus,
   CalendarCategory,
+  LabSlot,
   MeetingType,
   Member,
+  NotificationConfig,
   Priority,
   Role,
   TaskStatus,
@@ -43,6 +46,10 @@ interface ZeusContextValue {
   switchUser: (memberId: string) => void;
   resetDemo: () => void;
   toggleMyLabPresence: () => void;
+  voteAircraftConcept: (concept: AircraftConcept) => void;
+  updateMemberLabSlots: (memberId: string, labSlots: LabSlot[]) => void;
+  updateReportSectionScore: (sectionId: string, maxScore: number) => void;
+  updateNotificationConfig: (patch: NotificationConfig) => void;
   updateMemberProfile: (
     memberId: string,
     patch: {
@@ -126,6 +133,8 @@ function emptyRemoteState(uid: string): ZeusState {
     currentUserId: uid,
     competitionDate: "2027-10-28",
     calendarEvents: [],
+    conceptVotes: {},
+    notificationConfig: {},
     members: [],
     sprints: [],
     tasks: [],
@@ -149,6 +158,7 @@ function hydrateState(parsed: Partial<ZeusState>): ZeusState {
       course: m.course ?? seedMember?.course,
       bio: m.bio ?? seedMember?.bio,
       labSchedule: m.labSchedule ?? seedMember?.labSchedule,
+      labSlots: m.labSlots ?? seedMember?.labSlots ?? [],
     };
   });
 
@@ -158,6 +168,8 @@ function hydrateState(parsed: Partial<ZeusState>): ZeusState {
     members,
     competitionDate: parsed.competitionDate ?? INITIAL_ZEUS_STATE.competitionDate,
     calendarEvents: parsed.calendarEvents ?? INITIAL_ZEUS_STATE.calendarEvents,
+    conceptVotes: parsed.conceptVotes ?? INITIAL_ZEUS_STATE.conceptVotes,
+    notificationConfig: parsed.notificationConfig ?? INITIAL_ZEUS_STATE.notificationConfig,
   };
 }
 
@@ -237,6 +249,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
           bio: p.bio ? String(p.bio) : undefined,
           inLabNow: Boolean(p.in_lab_now),
           labSchedule: p.lab_schedule ? String(p.lab_schedule) : undefined,
+          labSlots: Array.isArray(p.lab_slots) ? (p.lab_slots as LabSlot[]) : [],
           createdAt: String(p.created_at).slice(0, 10),
         };
       };
@@ -263,6 +276,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         announcementsRes,
         settingsRes,
         calendarRes,
+        votesRes,
       ] = await Promise.all([
         supabase.from("profiles").select("*").order("created_at", { ascending: true }),
         supabase.from("profile_areas").select("*"),
@@ -276,6 +290,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         supabase.from("announcements").select("*").order("created_at", { ascending: false }),
         supabase.from("team_settings").select("*").eq("id", 1).maybeSingle(),
         supabase.from("calendar_events").select("*").order("event_date", { ascending: true }),
+        supabase.from("concept_votes").select("*"),
       ]);
 
       const paRows = paRes.data ?? [];
@@ -283,10 +298,16 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
       for (const row of overridesRes.data ?? []) {
         overrides[String(row.area_id)] = row.manual_percentage;
       }
+      const conceptVotes: Record<string, AircraftConcept> = {};
+      for (const row of votesRes.data ?? []) {
+        conceptVotes[String(row.profile_id)] = row.concept as AircraftConcept;
+      }
 
       setState({
         currentUserId: user.id,
         competitionDate: settingsRes.data?.competition_date ?? "2027-10-28",
+        conceptVotes,
+        notificationConfig: {},
         calendarEvents: (calendarRes.data ?? []).map((ev) => ({
           id: String(ev.id),
           title: String(ev.title),
@@ -333,6 +354,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
             ? r.impacted_area_ids.map(String)
             : [],
           externalUrl: r.external_url ? String(r.external_url) : undefined,
+          maxScore: typeof r.max_score === "number" ? r.max_score : 10,
         })),
         reportOverrides: overrides,
         meetings: (meetingsRes.data ?? []).map((m) => ({
@@ -485,6 +507,56 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
             supabase!.from("profiles").update({ in_lab_now: next }).eq("id", currentUser.id)
           );
         }
+      },
+      voteAircraftConcept: (concept) => {
+        setState((s) => ({
+          ...s,
+          conceptVotes: { ...s.conceptVotes, [currentUser.id]: concept },
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("concept_votes").upsert({
+              profile_id: currentUser.id,
+              concept,
+              updated_at: new Date().toISOString(),
+            })
+          );
+        }
+      },
+      updateMemberLabSlots: (memberId, labSlots) => {
+        if (currentUser.id !== memberId && !isTopLeadership(currentUser.role)) return;
+        setState((s) => ({
+          ...s,
+          members: s.members.map((m) => (m.id === memberId ? { ...m, labSlots } : m)),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("profiles").update({ lab_slots: labSlots }).eq("id", memberId)
+          );
+        }
+      },
+      updateReportSectionScore: (sectionId, maxScore) => {
+        const target = state.reportSections.find((r) => r.id === sectionId);
+        if (!target || !canManageArea(currentUser, target.areaId)) return;
+        const safeScore = Math.max(0, Math.min(200, Math.round(maxScore || 0)));
+        setState((s) => ({
+          ...s,
+          reportSections: s.reportSections.map((r) =>
+            r.id === sectionId ? { ...r, maxScore: safeScore } : r
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("report_sections").update({ max_score: safeScore }).eq("id", sectionId)
+          );
+        }
+      },
+      updateNotificationConfig: (patch) => {
+        if (!canApproveAccounts(currentUser)) return;
+        setState((s) => ({
+          ...s,
+          notificationConfig: { ...s.notificationConfig, ...patch },
+        }));
       },
       updateMemberProfile: (memberId, patch) => {
         if (currentUser.id !== memberId && !isTopLeadership(currentUser.role)) return;

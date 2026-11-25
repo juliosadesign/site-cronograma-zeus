@@ -21,6 +21,7 @@ import {
   computeDaysUntil,
   computeTeamReportPercentage,
   evaluateScheduleHealth,
+  getMemberLabStatus,
   ZEUS_AREAS,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
@@ -51,9 +52,14 @@ export function DashboardView({
   const [content, setContent] = useState("");
   const [pinned, setPinned] = useState(true);
 
-  const [todayIso, setTodayIso] = useState<string | null>(null);
+  const [nowInfo, setNowInfo] = useState<{ iso: string; dayOfWeek: number; minutes: number } | null>(null);
   useEffect(() => {
-    setTodayIso(new Date().toISOString().slice(0, 10));
+    const now = new Date();
+    setNowInfo({
+      iso: now.toISOString().slice(0, 10),
+      dayOfWeek: now.getDay(),
+      minutes: now.getHours() * 60 + now.getMinutes(),
+    });
   }, []);
 
   const activeSprint = state.sprints.find((s) => s.isActive) ?? state.sprints[0];
@@ -72,8 +78,17 @@ export function DashboardView({
   );
 
   const approvedMembers = state.members.filter((m) => m.accountStatus === "approved");
-  const membersInLab = approvedMembers.filter((m) => m.inLabNow);
-  const daysUntilComp = todayIso ? computeDaysUntil(state.competitionDate, todayIso) : null;
+  const labEntries = approvedMembers
+    .map((m) => ({
+      member: m,
+      labStatus: nowInfo
+        ? getMemberLabStatus(m, nowInfo.dayOfWeek, nowInfo.minutes)
+        : m.inLabNow
+        ? ("checked_in" as const)
+        : ("away" as const),
+    }))
+    .filter((entry) => entry.labStatus !== "away");
+  const daysUntilComp = nowInfo ? computeDaysUntil(state.competitionDate, nowInfo.iso) : null;
   const scheduleHealth =
     daysUntilComp !== null ? evaluateScheduleHealth(teamPercentage, daysUntilComp) : null;
 
@@ -298,10 +313,10 @@ export function DashboardView({
             <div>
               <h2 className="text-sm font-semibold flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-emerald-500" />
-                Na Sala Agora ({membersInLab.length})
+                Na Sala Agora ({labEntries.length})
               </h2>
               <p className="text-[11px] text-[var(--ink-subtle)]">
-                Membros no laboratório e janelas previstas pela grade horária
+                Check-in manual + janelas livres da grade da faculdade neste horário
               </p>
             </div>
             <button
@@ -316,13 +331,13 @@ export function DashboardView({
             </button>
           </div>
 
-          {membersInLab.length === 0 ? (
+          {labEntries.length === 0 ? (
             <div className="rounded-lg border border-dashed border-[var(--hairline)] p-4 text-xs text-[var(--ink-subtle)] text-center">
-              Ninguém marcado na sala neste momento.
+              Ninguém marcado na sala nem previsto pela grade neste horário.
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {membersInLab.map((m) => (
+              {labEntries.map(({ member: m, labStatus }) => (
                 <button
                   key={m.id}
                   onClick={() => onOpenProfile(m.id)}
@@ -330,12 +345,23 @@ export function DashboardView({
                 >
                   <MemberAvatar member={m} size="md" />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center justify-between gap-1.5">
                       <span className="text-xs font-semibold truncate">{m.fullName}</span>
-                      <RoleBadge role={m.role} />
+                      <span
+                        className={`rounded-full border px-1.5 py-0.2 text-[9px] font-medium shrink-0 ${
+                          labStatus === "checked_in"
+                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+                            : "border-sky-500/40 bg-sky-500/15 text-sky-400"
+                        }`}
+                      >
+                        {labStatus === "checked_in" ? "Confirmado" : "Pela grade"}
+                      </span>
                     </div>
-                    <div className="mt-0.5 text-[11px] text-[var(--ink-subtle)] truncate">
-                      {m.labSchedule || "Horário não informado"}
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <RoleBadge role={m.role} />
+                      <span className="text-[10px] text-[var(--ink-subtle)] truncate">
+                        {m.labSchedule || ""}
+                      </span>
                     </div>
                   </div>
                 </button>

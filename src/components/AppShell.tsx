@@ -10,6 +10,7 @@ import {
   LogOut,
   MapPin,
   Moon,
+  Network,
   RotateCcw,
   Search,
   ShieldCheck,
@@ -27,6 +28,7 @@ export type NavTab =
   | "dashboard"
   | "sprints"
   | "areas"
+  | "graph"
   | "calendar"
   | "ranking"
   | "meetings"
@@ -76,6 +78,7 @@ export function AppShell({
     { id: "dashboard", label: "Visão Geral", shortLabel: "Início", icon: LayoutDashboard },
     { id: "sprints", label: "Sprints", shortLabel: "Sprints", icon: ListChecks },
     { id: "areas", label: "Áreas & Relatórios", shortLabel: "Áreas", icon: FolderLock },
+    { id: "graph", label: "Grafo de Áreas", shortLabel: "Grafo", icon: Network },
     { id: "calendar", label: "Calendário", shortLabel: "Agenda", icon: Calendar },
     { id: "ranking", label: "Ranking & Perfis", shortLabel: "Ranking", icon: Trophy },
     { id: "meetings", label: "Reuniões", shortLabel: "Chamada", icon: CalendarCheck2 },

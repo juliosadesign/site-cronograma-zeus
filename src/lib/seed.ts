@@ -8,6 +8,16 @@ function portraitSvg(initials: string, bg: string, accent: string): string {
 export const INITIAL_ZEUS_STATE: ZeusState = {
   currentUserId: "m-julio",
   competitionDate: "2027-10-28",
+  conceptVotes: {
+    "m-julio": "asa_voadora",
+    "m-cap": "monoplano",
+    "m-cocap": "monoplano",
+    "m-dir-aero": "biplano",
+    "m-dir-estr": "monoplano",
+    "m-efet-1": "biplano",
+    "m-cal-1": "asa_voadora",
+  },
+  notificationConfig: {},
   calendarEvents: [
     {
       id: "ev-comp",
@@ -48,6 +58,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       bio: "Desenvolvedor da plataforma Zeus e integrante de Integração, Elétrico e Gestão.",
       inLabNow: true,
       labSchedule: "Seg/Qua 14h–18h · Sex 09h–12h",
+      labSlots: [
+        { day: 1, start: "14:00", end: "18:00" },
+        { day: 3, start: "14:00", end: "18:00" },
+        { day: 5, start: "09:00", end: "12:00" },
+      ],
       createdAt: "2026-02-10",
     },
     {
@@ -80,6 +95,11 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       bio: "Co-capitã técnica acompanhando integração entre subequipes.",
       inLabNow: false,
       labSchedule: "Seg/Qua 09h–12h",
+      labSlots: [
+        { day: 1, start: "09:00", end: "12:00" },
+        { day: 2, start: "18:00", end: "22:00" },
+        { day: 3, start: "09:00", end: "12:00" },
+      ],
       createdAt: "2026-02-01",
     },
     {

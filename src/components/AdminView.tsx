@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, UserPlus, X } from "lucide-react";
+import { Bell, Check, Send, UserPlus, X } from "lucide-react";
 import { canApproveAccounts, ROLE_META, ZEUS_AREAS } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
 import type { Member, Role } from "@/lib/types";
@@ -128,11 +128,14 @@ function PendingReviewCard({ member }: { member: Member }) {
 }
 
 export function AdminView() {
-  const { state, currentUser, simulateSignup, reviewMemberAccount } = useZeus();
+  const { state, currentUser, simulateSignup, reviewMemberAccount, updateNotificationConfig } =
+    useZeus();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [requestedRole, setRequestedRole] = useState<Role>("calouro");
   const [signupAreas, setSignupAreas] = useState<string[]>(["aerodinamica"]);
+  const [notifyStatus, setNotifyStatus] = useState<string | null>(null);
+  const [sendingTest, setSendingTest] = useState(false);
 
   if (!canApproveAccounts(currentUser)) {
     return (
@@ -289,6 +292,123 @@ export function AdminView() {
               </select>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Notifications & Bots (V2) */}
+      <section className="zeus-card rounded-xl p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <Bell className="h-4 w-4 text-amber-500" />
+              Notificações Automáticas (PWA + Discord / Telegram)
+            </h2>
+            <p className="text-xs text-[var(--ink-subtle)]">
+              Canais oficiais gratuitos para avisar a equipe sobre sprints, validações e reuniões quinzenais sem risco ao WhatsApp.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              if (typeof window === "undefined" || !("Notification" in window)) {
+                setNotifyStatus("Este navegador não suporta notificações Push.");
+                return;
+              }
+              const perm = await Notification.requestPermission();
+              if (perm === "granted") {
+                new Notification("Zeus AeroDesign", {
+                  body: "Notificações Push ativadas neste dispositivo!",
+                });
+                setNotifyStatus("Push ativado no navegador!");
+              } else {
+                setNotifyStatus(`Permissão de Push: ${perm}`);
+              }
+            }}
+            className="zeus-btn rounded-md border border-blue-500/40 bg-blue-500/15 px-3 py-1.5 text-xs font-medium text-sky-400"
+          >
+            Ativar Push no App
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <input
+            type="url"
+            placeholder="Discord Webhook URL (opcional)"
+            value={state.notificationConfig.discordWebhookUrl ?? ""}
+            onChange={(e) => updateNotificationConfig({ discordWebhookUrl: e.target.value })}
+            className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
+          />
+          <input
+            type="text"
+            placeholder="Telegram Bot Token (opcional)"
+            value={state.notificationConfig.telegramBotToken ?? ""}
+            onChange={(e) => updateNotificationConfig({ telegramBotToken: e.target.value })}
+            className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
+          />
+          <input
+            type="text"
+            placeholder="Telegram Chat ID (opcional)"
+            value={state.notificationConfig.telegramChatId ?? ""}
+            onChange={(e) => updateNotificationConfig({ telegramChatId: e.target.value })}
+            className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={sendingTest}
+            onClick={async () => {
+              setSendingTest(true);
+              setNotifyStatus(null);
+              const res = await fetch("/api/notify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  channel: "discord",
+                  webhookUrl: state.notificationConfig.discordWebhookUrl,
+                  title: "Teste Zeus AeroDesign",
+                  message: "Integração de avisos da Sprint conectada com sucesso!",
+                }),
+              });
+              const data = (await res.json()) as { ok: boolean; error?: string };
+              setNotifyStatus(data.ok ? "Enviado para o Discord!" : data.error ?? "Falha no envio.");
+              setSendingTest(false);
+            }}
+            className="zeus-btn inline-flex items-center gap-1 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-1.5 text-xs"
+          >
+            <Send className="h-3 w-3" /> Testar Discord
+          </button>
+
+          <button
+            type="button"
+            disabled={sendingTest}
+            onClick={async () => {
+              setSendingTest(true);
+              setNotifyStatus(null);
+              const res = await fetch("/api/notify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  channel: "telegram",
+                  botToken: state.notificationConfig.telegramBotToken,
+                  chatId: state.notificationConfig.telegramChatId,
+                  title: "Teste Zeus AeroDesign",
+                  message: "Integração de avisos da Sprint conectada com sucesso!",
+                }),
+              });
+              const data = (await res.json()) as { ok: boolean; error?: string };
+              setNotifyStatus(data.ok ? "Enviado para o Telegram!" : data.error ?? "Falha no envio.");
+              setSendingTest(false);
+            }}
+            className="zeus-btn inline-flex items-center gap-1 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-1.5 text-xs"
+          >
+            <Send className="h-3 w-3" /> Testar Telegram
+          </button>
+
+          {notifyStatus && (
+            <span className="text-xs text-amber-400 font-mono">{notifyStatus}</span>
+          )}
         </div>
       </section>
     </div>

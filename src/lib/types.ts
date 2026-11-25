@@ -12,6 +12,19 @@ export type Priority = "critical" | "high" | "medium" | "low";
 export type AttendanceStatus = "present" | "absent" | "justified";
 export type MeetingType = "general" | "area";
 export type CalendarCategory = "competition" | "meeting" | "sprint" | "deadline";
+export type AircraftConcept = "monoplano" | "biplano" | "asa_voadora";
+
+export interface LabSlot {
+  day: number; // 0 = Dom .. 6 = Sab
+  start: string; // HH:MM
+  end: string; // HH:MM
+}
+
+export interface NotificationConfig {
+  discordWebhookUrl?: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+}
 
 export interface Area {
   id: string;
@@ -34,6 +47,7 @@ export interface Member {
   bio?: string;
   inLabNow: boolean;
   labSchedule?: string;
+  labSlots?: LabSlot[];
   createdAt: string;
 }
 
@@ -123,6 +137,8 @@ export interface ZeusState {
   currentUserId: string;
   competitionDate: string;
   calendarEvents: CalendarEvent[];
+  conceptVotes: Record<string, AircraftConcept>;
+  notificationConfig: NotificationConfig;
   members: Member[];
   sprints: Sprint[];
   tasks: SprintTask[];

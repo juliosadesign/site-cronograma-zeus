@@ -66,6 +66,7 @@ create table if not exists public.profiles (
   bio text,
   in_lab_now boolean not null default false,
   lab_schedule text,
+  lab_slots jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -433,6 +434,20 @@ create policy "director_manage_attendance" on public.meeting_attendance
         and (public.is_top_leadership() or (m.meeting_type = 'area' and m.area_id is not null and public.is_area_director(m.area_id)))
     )
   );
+
+-- 11. Votacao conceitual (Monoplano / Biplano / Asa Voadora)
+create table if not exists public.concept_votes (
+  profile_id uuid primary key references public.profiles(id) on delete cascade,
+  concept text not null check (concept in ('monoplano', 'biplano', 'asa_voadora')),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.concept_votes enable row level security;
+
+create policy "approved_read_concept_votes" on public.concept_votes for select to authenticated using (public.is_approved_member());
+create policy "self_upsert_concept_votes" on public.concept_votes for insert to authenticated with check (profile_id = (select auth.uid()) and public.is_approved_member());
+create policy "self_update_concept_votes" on public.concept_votes for update to authenticated using (profile_id = (select auth.uid()) and public.is_approved_member()) with check (profile_id = (select auth.uid()) and public.is_approved_member());
+create policy "self_delete_concept_votes" on public.concept_votes for delete to authenticated using (profile_id = (select auth.uid()) and public.is_approved_member());
 
 -- Espaco Privado da Area: SOMENTE membros daquela area + Desenvolvedor/Capitao/Co-Capitao
 create policy "private_area_notes_all" on public.area_notes
