@@ -81,6 +81,7 @@ create table if not exists public.profile_areas (
 -- 4. Sprints quinzenais
 create table if not exists public.sprints (
   id uuid primary key default gen_random_uuid(),
+  season_year integer not null default 2026,
   name text not null,
   start_date date not null,
   end_date date not null,
@@ -448,6 +449,57 @@ create policy "approved_read_concept_votes" on public.concept_votes for select t
 create policy "self_upsert_concept_votes" on public.concept_votes for insert to authenticated with check (profile_id = (select auth.uid()) and public.is_approved_member());
 create policy "self_update_concept_votes" on public.concept_votes for update to authenticated using (profile_id = (select auth.uid()) and public.is_approved_member()) with check (profile_id = (select auth.uid()) and public.is_approved_member());
 create policy "self_delete_concept_votes" on public.concept_votes for delete to authenticated using (profile_id = (select auth.uid()) and public.is_approved_member());
+
+-- 12. Acervo de Relatorios Antigos, Checklist de Voo e Erros da Competicao
+create table if not exists public.archive_documents (
+  id uuid primary key default gen_random_uuid(),
+  season_year integer not null default 2026,
+  area_id text not null references public.areas(id) on delete cascade,
+  title text not null,
+  doc_type text not null check (doc_type in ('relatorio','planilha','cad','apresentacao','ata')),
+  external_url text not null,
+  summary text not null default '',
+  impacted_area_ids text[] not null default '{}',
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.flight_checklist_items (
+  id uuid primary key default gen_random_uuid(),
+  season_year integer not null default 2026,
+  category text not null check (category in ('estrutural','aerodinamica','propulsao','cg_peso','seguranca')),
+  area_id text references public.areas(id) on delete set null,
+  title text not null,
+  critical boolean not null default false,
+  checked boolean not null default false,
+  notes text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.competition_lessons (
+  id uuid primary key default gen_random_uuid(),
+  season_year integer not null default 2026,
+  area_id text not null references public.areas(id) on delete cascade,
+  severity text not null check (severity in ('critico','alto','medio')),
+  title text not null,
+  root_cause text not null default '',
+  prevention_action text not null default '',
+  resolved boolean not null default false,
+  impacted_area_ids text[] not null default '{}',
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now()
+);
+
+alter table public.archive_documents enable row level security;
+alter table public.flight_checklist_items enable row level security;
+alter table public.competition_lessons enable row level security;
+
+create policy "approved_read_archive_documents" on public.archive_documents for select to authenticated using (public.is_approved_member());
+create policy "director_manage_archive_documents" on public.archive_documents for all to authenticated using (public.is_area_director(area_id)) with check (public.is_area_director(area_id));
+create policy "approved_read_flight_checklist" on public.flight_checklist_items for select to authenticated using (public.is_approved_member());
+create policy "director_manage_flight_checklist" on public.flight_checklist_items for all to authenticated using (public.is_top_leadership() or (area_id is not null and public.is_area_director(area_id))) with check (public.is_top_leadership() or (area_id is not null and public.is_area_director(area_id)));
+create policy "approved_read_competition_lessons" on public.competition_lessons for select to authenticated using (public.is_approved_member());
+create policy "director_manage_competition_lessons" on public.competition_lessons for all to authenticated using (public.is_area_director(area_id)) with check (public.is_area_director(area_id));
 
 -- Espaco Privado da Area: SOMENTE membros daquela area + Desenvolvedor/Capitao/Co-Capitao
 create policy "private_area_notes_all" on public.area_notes

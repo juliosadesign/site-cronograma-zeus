@@ -2,8 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import {
+  Archive,
   Calendar,
   CalendarCheck2,
+  ClipboardCheck,
   FolderLock,
   LayoutDashboard,
   ListChecks,
@@ -11,6 +13,8 @@ import {
   MapPin,
   Moon,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   RotateCcw,
   Search,
   ShieldCheck,
@@ -21,6 +25,7 @@ import {
 import { canApproveAccounts, ROLE_META } from "@/lib/domain";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useZeus } from "@/lib/store";
+import type { SeasonYear } from "@/lib/types";
 import { RoleBadge } from "./Badge";
 import { MemberAvatar } from "./MemberAvatar";
 
@@ -29,12 +34,15 @@ export type NavTab =
   | "sprints"
   | "areas"
   | "graph"
+  | "archive"
+  | "flight"
   | "calendar"
   | "ranking"
   | "meetings"
   | "admin";
 
 const THEME_KEY = "zeus_theme";
+const SIDEBAR_KEY = "zeus_sidebar_collapsed";
 
 export function AppShell({
   activeTab,
@@ -47,15 +55,27 @@ export function AppShell({
   onOpenProfile: (memberId: string) => void;
   children: React.ReactNode;
 }) {
-  const { state, currentUser, switchUser, resetDemo, toggleMyLabPresence, signOut } = useZeus();
+  const {
+    state,
+    currentUser,
+    switchUser,
+    resetDemo,
+    toggleMyLabPresence,
+    signOut,
+    setActiveSeason,
+  } = useZeus();
   const [dark, setDark] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [quickJump, setQuickJump] = useState("");
 
   useEffect(() => {
-    const saved = localStorage.getItem(THEME_KEY);
-    const isDark = saved ? saved === "dark" : true;
+    const savedTheme = localStorage.getItem(THEME_KEY);
+    const isDark = savedTheme ? savedTheme === "dark" : true;
     setDark(isDark);
     document.documentElement.classList.toggle("dark", isDark);
+
+    const savedSidebar = localStorage.getItem(SIDEBAR_KEY);
+    if (savedSidebar === "1") setCollapsed(true);
   }, []);
 
   const toggleTheme = () => {
@@ -63,6 +83,12 @@ export function AppShell({
     setDark(next);
     localStorage.setItem(THEME_KEY, next ? "dark" : "light");
     document.documentElement.classList.toggle("dark", next);
+  };
+
+  const toggleSidebar = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
   };
 
   const pendingCount = state.members.filter((m) => m.accountStatus === "pending").length;
@@ -78,7 +104,9 @@ export function AppShell({
     { id: "dashboard", label: "Visão Geral", shortLabel: "Início", icon: LayoutDashboard },
     { id: "sprints", label: "Sprints", shortLabel: "Sprints", icon: ListChecks },
     { id: "areas", label: "Áreas & Relatórios", shortLabel: "Áreas", icon: FolderLock },
-    { id: "graph", label: "Grafo de Áreas", shortLabel: "Grafo", icon: Network },
+    { id: "graph", label: "Grafo Obsidian", shortLabel: "Grafo", icon: Network },
+    { id: "archive", label: "Acervo & Relatórios", shortLabel: "Acervo", icon: Archive },
+    { id: "flight", label: "Voo & Lições SAE", shortLabel: "Voo", icon: ClipboardCheck },
     { id: "calendar", label: "Calendário", shortLabel: "Agenda", icon: Calendar },
     { id: "ranking", label: "Ranking & Perfis", shortLabel: "Ranking", icon: Trophy },
     { id: "meetings", label: "Reuniões", shortLabel: "Chamada", icon: CalendarCheck2 },
@@ -106,54 +134,96 @@ export function AppShell({
 
   const approvedMembers = state.members.filter((m) => m.accountStatus === "approved");
 
+  const activeNavClass =
+    "bg-blue-600/20 border-blue-500/70 text-[var(--ink)] shadow-[inset_3px_0_0_0_#3b82f6]";
+  const inactiveNavClass =
+    "text-[var(--ink-subtle)] hover:text-[var(--ink)] hover:bg-[var(--surface-2)]/70 border-transparent";
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[var(--canvas)] text-[var(--ink)]">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 border-r border-[var(--hairline)] bg-[var(--surface-1)]">
-        <div className="h-14 px-4 flex items-center gap-2.5 border-b border-[var(--hairline)]">
-          <div className="h-7 w-7 rounded-lg bg-[#0f172a] border border-amber-500/50 flex items-center justify-center text-amber-400">
-            <Zap className="h-4 w-4 fill-amber-400" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold tracking-tight truncate">Zeus AeroDesign</div>
-            <div className="text-[11px] text-[var(--ink-subtle)] truncate">UEMA · SAE Brasil SJC</div>
-          </div>
-        </div>
-
-        <div className="px-3 pt-3 pb-1">
-          <div className="relative">
-            <Search className="h-3.5 w-3.5 text-[var(--ink-subtle)] absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={quickJump}
-              onChange={(e) => setQuickJump(e.target.value)}
-              placeholder="Buscar aba..."
-              className="w-full h-8 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] pl-8 pr-2.5 text-xs text-[var(--ink)] placeholder:text-[var(--ink-subtle)] focus:outline-none focus:border-blue-500/60"
-            />
-          </div>
-        </div>
-
-        <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
-          <div className="space-y-1">
-            <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
-              Plataforma
+      {/* Desktop Collapsible Sidebar */}
+      <aside
+        className={`hidden md:flex md:flex-col md:fixed md:inset-y-0 border-r border-[var(--hairline)] bg-[var(--surface-1)] transition-[width] duration-200 z-30 ${
+          collapsed ? "md:w-[68px]" : "md:w-64"
+        }`}
+      >
+        <div className="h-14 px-3 flex items-center justify-between gap-2 border-b border-[var(--hairline)]">
+          <div className={`flex items-center gap-2.5 min-w-0 ${collapsed ? "mx-auto" : ""}`}>
+            <div className="h-7 w-7 rounded-lg bg-[#0f172a] border border-amber-500/50 flex items-center justify-center text-amber-400 shrink-0">
+              <Zap className="h-4 w-4 fill-amber-400" />
             </div>
+            {!collapsed && (
+              <div className="min-w-0">
+                <div className="text-sm font-semibold tracking-tight truncate">Zeus AeroDesign</div>
+                <div className="text-[11px] text-[var(--ink-subtle)] truncate">UEMA · SAE Brasil SJC</div>
+              </div>
+            )}
+          </div>
+
+          {!collapsed && (
+            <button
+              onClick={toggleSidebar}
+              title="Retrair menu lateral"
+              aria-label="Retrair menu lateral"
+              className="h-7 w-7 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] flex items-center justify-center text-[var(--ink-subtle)] hover:text-blue-400 shrink-0"
+            >
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        {collapsed && (
+          <div className="px-2 pt-2 flex justify-center">
+            <button
+              onClick={toggleSidebar}
+              title="Expandir menu lateral"
+              aria-label="Expandir menu lateral"
+              className="h-8 w-full rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] flex items-center justify-center text-[var(--ink-subtle)] hover:text-blue-400"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {!collapsed && (
+          <div className="px-3 pt-3 pb-1">
+            <div className="relative">
+              <Search className="h-3.5 w-3.5 text-[var(--ink-subtle)] absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={quickJump}
+                onChange={(e) => setQuickJump(e.target.value)}
+                placeholder="Buscar aba..."
+                className="w-full h-8 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] pl-8 pr-2.5 text-xs text-[var(--ink)] placeholder:text-[var(--ink-subtle)] focus:outline-none focus:border-blue-500/60"
+              />
+            </div>
+          </div>
+        )}
+
+        <nav className="flex-1 p-2.5 space-y-4 overflow-y-auto">
+          <div className="space-y-1">
+            {!collapsed && (
+              <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+                Plataforma
+              </div>
+            )}
             {filteredPlatformNav.map((item) => {
               const Icon = item.icon;
               const active = activeTab === item.id;
               return (
                 <button
                   key={item.id}
+                  title={item.label}
                   onClick={() => onTabChange(item.id)}
-                  className={`zeus-btn w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium border ${
-                    active
-                      ? "zeus-nav-active text-[var(--ink)]"
-                      : "text-[var(--ink-subtle)] hover:text-[var(--ink)] hover:bg-[var(--surface-2)]/70 border-transparent"
+                  className={`zeus-btn w-full flex items-center ${
+                    collapsed ? "justify-center px-0 py-2.5" : "justify-between px-3 py-2"
+                  } rounded-lg text-[13px] font-medium border ${
+                    active ? activeNavClass : inactiveNavClass
                   }`}
                 >
                   <span className="flex items-center gap-2.5">
-                    <Icon className={`h-4 w-4 ${active ? "text-blue-500" : ""}`} />
-                    {item.label}
+                    <Icon className={`h-4 w-4 shrink-0 ${active ? "text-blue-400" : ""}`} />
+                    {!collapsed && <span>{item.label}</span>}
                   </span>
                 </button>
               );
@@ -162,30 +232,36 @@ export function AppShell({
 
           {filteredMgmtNav.length > 0 && (
             <div className="space-y-1">
-              <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
-                Liderança
-              </div>
+              {!collapsed && (
+                <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+                  Liderança
+                </div>
+              )}
               {filteredMgmtNav.map((item) => {
                 const Icon = item.icon;
                 const active = activeTab === item.id;
                 return (
                   <button
                     key={item.id}
+                    title={item.label}
                     onClick={() => onTabChange(item.id)}
-                    className={`zeus-btn w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium border ${
-                      active
-                        ? "zeus-nav-active text-[var(--ink)]"
-                        : "text-[var(--ink-subtle)] hover:text-[var(--ink)] hover:bg-[var(--surface-2)]/70 border-transparent"
+                    className={`zeus-btn relative w-full flex items-center ${
+                      collapsed ? "justify-center px-0 py-2.5" : "justify-between px-3 py-2"
+                    } rounded-lg text-[13px] font-medium border ${
+                      active ? activeNavClass : inactiveNavClass
                     }`}
                   >
                     <span className="flex items-center gap-2.5">
-                      <Icon className={`h-4 w-4 ${active ? "text-blue-500" : ""}`} />
-                      {item.label}
+                      <Icon className={`h-4 w-4 shrink-0 ${active ? "text-blue-400" : ""}`} />
+                      {!collapsed && <span>{item.label}</span>}
                     </span>
-                    {item.badge ? (
+                    {!collapsed && item.badge ? (
                       <span className="rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 px-1.5 font-mono text-[10px]">
                         {item.badge}
                       </span>
+                    ) : null}
+                    {collapsed && item.badge ? (
+                      <span className="absolute top-1 right-1.5 h-2 w-2 rounded-full bg-amber-500" />
                     ) : null}
                   </button>
                 );
@@ -194,46 +270,58 @@ export function AppShell({
           )}
         </nav>
 
-        <div className="p-3 border-t border-[var(--hairline)] space-y-2.5">
+        <div className="p-2.5 border-t border-[var(--hairline)] space-y-2">
           <button
             onClick={() => onOpenProfile(currentUser.id)}
-            className="w-full text-left rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] hover:border-[var(--hairline-strong)] p-2.5 flex items-center gap-2.5 transition-colors"
+            title={currentUser.fullName}
+            className={`w-full text-left rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] hover:border-[var(--hairline-strong)] ${
+              collapsed ? "p-1.5 flex justify-center" : "p-2.5 flex items-center gap-2.5"
+            } transition-colors`}
           >
-            <MemberAvatar member={currentUser} size="md" />
-            <div className="min-w-0">
-              <div className="text-xs font-medium truncate">{currentUser.fullName}</div>
-              <div className="mt-1">
-                <RoleBadge role={currentUser.role} />
+            <MemberAvatar member={currentUser} size={collapsed ? "sm" : "md"} />
+            {!collapsed && (
+              <div className="min-w-0">
+                <div className="text-xs font-medium truncate">{currentUser.fullName}</div>
+                <div className="mt-1">
+                  <RoleBadge role={currentUser.role} />
+                </div>
               </div>
-            </div>
-          </button>
-          <div className="text-[11px] text-[var(--ink-subtle)] flex items-center justify-between px-1">
-            <span>{isSupabaseConfigured ? "Supabase ativo" : "Modo Local / Demo"}</span>
-            {isSupabaseConfigured ? (
-              <button
-                onClick={() => void signOut()}
-                title="Sair da conta"
-                className="inline-flex items-center gap-1 text-sky-400 hover:text-amber-400 transition-colors"
-              >
-                <LogOut className="h-3 w-3" />
-                Sair
-              </button>
-            ) : (
-              <button
-                onClick={resetDemo}
-                title="Resetar dados de demonstração"
-                className="inline-flex items-center gap-1 text-sky-400 hover:text-amber-400 transition-colors"
-              >
-                <RotateCcw className="h-3 w-3" />
-                Reset
-              </button>
             )}
-          </div>
+          </button>
+
+          {!collapsed && (
+            <div className="text-[11px] text-[var(--ink-subtle)] flex items-center justify-between px-1">
+              <span>{isSupabaseConfigured ? "Supabase ativo" : "Modo Local / Demo"}</span>
+              {isSupabaseConfigured ? (
+                <button
+                  onClick={() => void signOut()}
+                  title="Sair da conta"
+                  className="inline-flex items-center gap-1 text-sky-400 hover:text-amber-400 transition-colors"
+                >
+                  <LogOut className="h-3 w-3" />
+                  Sair
+                </button>
+              ) : (
+                <button
+                  onClick={resetDemo}
+                  title="Resetar dados de demonstração"
+                  className="inline-flex items-center gap-1 text-sky-400 hover:text-amber-400 transition-colors"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 md:pl-64 flex flex-col min-w-0 pb-20 md:pb-8">
+      <div
+        className={`flex-1 flex flex-col min-w-0 pb-20 md:pb-8 transition-[padding] duration-200 ${
+          collapsed ? "md:pl-[68px]" : "md:pl-64"
+        }`}
+      >
         <header className="sticky top-0 z-20 h-14 border-b border-[var(--hairline)] bg-[var(--surface-1)]/90 backdrop-blur px-4 md:px-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 md:hidden">
             <div className="h-7 w-7 rounded-lg bg-[#0f172a] border border-amber-500/50 flex items-center justify-center text-amber-400">
@@ -242,10 +330,30 @@ export function AppShell({
             <span className="text-sm font-semibold tracking-tight">Zeus Aero</span>
           </div>
 
-          <div className="hidden md:flex items-center gap-2 text-xs text-[var(--ink-subtle)]">
-            <span className="font-mono text-sky-400">ZEUS 2026</span>
-            <span>/</span>
-            <span className="text-[var(--ink)] font-medium">
+          <div className="flex items-center gap-2.5 text-xs text-[var(--ink-subtle)]">
+            {/* Season Switcher: ZEUS 2026 | ZEUS 2027 */}
+            <div className="inline-flex rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-2)] p-0.5 font-mono text-[11px]">
+              {([2026, 2027] as SeasonYear[]).map((yr) => {
+                const active = state.activeSeason === yr;
+                return (
+                  <button
+                    key={yr}
+                    type="button"
+                    onClick={() => setActiveSeason(yr)}
+                    className={`rounded-md px-2 py-1 font-semibold transition-colors ${
+                      active
+                        ? "bg-blue-600 text-white"
+                        : "text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+                    }`}
+                  >
+                    ZEUS {yr}
+                  </button>
+                );
+              })}
+            </div>
+
+            <span className="hidden md:inline">/</span>
+            <span className="hidden md:inline text-[var(--ink)] font-medium">
               {allNav.find((i) => i.id === activeTab)?.label ?? "Visão Geral"}
             </span>
           </div>
@@ -304,7 +412,7 @@ export function AppShell({
       </div>
 
       {/* Mobile PWA Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[var(--hairline)] bg-[var(--surface-1)]/95 backdrop-blur flex justify-around px-1 py-1.5">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[var(--hairline)] bg-[var(--surface-1)]/95 backdrop-blur flex overflow-x-auto px-1 py-1.5 gap-1">
         {allNav.map((item) => {
           const Icon = item.icon;
           const active = activeTab === item.id;
@@ -312,8 +420,8 @@ export function AppShell({
             <button
               key={item.id}
               onClick={() => onTabChange(item.id)}
-              className={`relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-md text-[10px] font-medium ${
-                active ? "text-blue-500" : "text-[var(--ink-subtle)]"
+              className={`relative shrink-0 min-w-[56px] flex flex-col items-center gap-0.5 px-2 py-1 rounded-md text-[10px] font-medium ${
+                active ? "text-blue-400 bg-blue-600/15" : "text-[var(--ink-subtle)]"
               }`}
             >
               <Icon className="h-4 w-4" />

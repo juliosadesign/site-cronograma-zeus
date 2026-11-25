@@ -33,7 +33,8 @@ export function SprintsView({
     deleteSprint,
   } = useZeus();
 
-  const activeSprint = state.sprints.find((s) => s.isActive) ?? state.sprints[0];
+  const seasonSprints = state.sprints.filter((sp) => sp.seasonYear === state.activeSeason);
+  const activeSprint = seasonSprints.find((s) => s.isActive) ?? seasonSprints[0];
   const [selectedSprintId, setSelectedSprintId] = useState(activeSprint?.id ?? "");
   const [confirmDeleteSprint, setConfirmDeleteSprint] = useState(false);
 
@@ -52,10 +53,10 @@ export function SprintsView({
   const [impactedAreaIds, setImpactedAreaIds] = useState<string[]>([]);
 
   const [sprintName, setSprintName] = useState("");
-  const [sprintStart, setSprintStart] = useState("2026-11-25");
-  const [sprintEnd, setSprintEnd] = useState("2026-12-09");
+  const [sprintStart, setSprintStart] = useState(`${state.activeSeason}-11-25`);
+  const [sprintEnd, setSprintEnd] = useState(`${state.activeSeason}-12-09`);
 
-  const effectiveSprintId = state.sprints.some((sp) => sp.id === selectedSprintId)
+  const effectiveSprintId = seasonSprints.some((sp) => sp.id === selectedSprintId)
     ? selectedSprintId
     : (activeSprint?.id ?? "");
 
@@ -151,10 +152,10 @@ export function SprintsView({
             }}
             className="h-8 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 text-xs"
           >
-            {state.sprints.length === 0 ? (
-              <option value="">Nenhuma sprint</option>
+            {seasonSprints.length === 0 ? (
+              <option value="">Nenhuma sprint em {state.activeSeason}</option>
             ) : (
-              state.sprints.map((sp) => (
+              seasonSprints.map((sp) => (
                 <option key={sp.id} value={sp.id}>
                   {sp.name} {sp.isActive ? "(Ativa)" : ""}
                 </option>

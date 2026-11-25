@@ -15,14 +15,18 @@ import { INITIAL_ZEUS_STATE } from "./seed";
 import { isSupabaseConfigured, supabase } from "./supabase";
 import type {
   AircraftConcept,
+  ArchiveDocType,
   AttendanceStatus,
   CalendarCategory,
+  FlightCategory,
   LabSlot,
+  LessonSeverity,
   MeetingType,
   Member,
   NotificationConfig,
   Priority,
   Role,
+  SeasonYear,
   TaskStatus,
   ZeusState,
 } from "./types";
@@ -45,6 +49,7 @@ interface ZeusContextValue {
   }) => Promise<void>;
   switchUser: (memberId: string) => void;
   resetDemo: () => void;
+  setActiveSeason: (year: SeasonYear) => void;
   toggleMyLabPresence: () => void;
   voteAircraftConcept: (concept: AircraftConcept) => void;
   updateMemberLabSlots: (memberId: string, labSlots: LabSlot[]) => void;
@@ -104,6 +109,36 @@ interface ZeusContextValue {
   setAttendance: (meetingId: string, memberId: string, status: AttendanceStatus) => void;
   createAnnouncement: (input: { title: string; content: string; pinned: boolean }) => void;
   togglePinAnnouncement: (id: string) => void;
+  addArchiveDocument: (input: {
+    seasonYear: number;
+    areaId: string;
+    title: string;
+    docType: ArchiveDocType;
+    externalUrl: string;
+    summary: string;
+    impactedAreaIds: string[];
+  }) => void;
+  deleteArchiveDocument: (docId: string) => void;
+  toggleFlightCheckItem: (itemId: string) => void;
+  addFlightCheckItem: (input: {
+    category: FlightCategory;
+    areaId?: string;
+    title: string;
+    critical: boolean;
+    notes: string;
+  }) => void;
+  resetFlightChecklist: () => void;
+  addCompetitionLesson: (input: {
+    seasonYear: number;
+    areaId: string;
+    severity: LessonSeverity;
+    title: string;
+    rootCause: string;
+    preventionAction: string;
+    impactedAreaIds: string[];
+  }) => void;
+  toggleLessonResolved: (lessonId: string) => void;
+  deleteCompetitionLesson: (lessonId: string) => void;
   simulateSignup: (input: {
     fullName: string;
     email: string;
@@ -131,6 +166,7 @@ function newId(prefix: string): string {
 function emptyRemoteState(uid: string): ZeusState {
   return {
     currentUserId: uid,
+    activeSeason: 2026,
     competitionDate: "2027-10-28",
     calendarEvents: [],
     conceptVotes: {},
@@ -144,6 +180,9 @@ function emptyRemoteState(uid: string): ZeusState {
     attendance: [],
     areaNotes: [],
     announcements: [],
+    archiveDocuments: [],
+    flightChecklist: [],
+    competitionLessons: [],
   };
 }
 
@@ -166,10 +205,33 @@ function hydrateState(parsed: Partial<ZeusState>): ZeusState {
     ...INITIAL_ZEUS_STATE,
     ...parsed,
     members,
+    activeSeason: parsed.activeSeason ?? INITIAL_ZEUS_STATE.activeSeason,
     competitionDate: parsed.competitionDate ?? INITIAL_ZEUS_STATE.competitionDate,
-    calendarEvents: parsed.calendarEvents ?? INITIAL_ZEUS_STATE.calendarEvents,
+    calendarEvents: (parsed.calendarEvents ?? INITIAL_ZEUS_STATE.calendarEvents).map((e) => ({
+      ...e,
+      seasonYear: e.seasonYear ?? 2026,
+    })),
+    sprints: (parsed.sprints ?? INITIAL_ZEUS_STATE.sprints).map((sp) => ({
+      ...sp,
+      seasonYear: sp.seasonYear ?? 2026,
+    })),
+    reportSections: (parsed.reportSections ?? INITIAL_ZEUS_STATE.reportSections).map((r) => ({
+      ...r,
+      seasonYear: r.seasonYear ?? 2026,
+    })),
+    meetings: (parsed.meetings ?? INITIAL_ZEUS_STATE.meetings).map((mt) => ({
+      ...mt,
+      seasonYear: mt.seasonYear ?? 2026,
+    })),
+    announcements: (parsed.announcements ?? INITIAL_ZEUS_STATE.announcements).map((a) => ({
+      ...a,
+      seasonYear: a.seasonYear ?? 2026,
+    })),
     conceptVotes: parsed.conceptVotes ?? INITIAL_ZEUS_STATE.conceptVotes,
     notificationConfig: parsed.notificationConfig ?? INITIAL_ZEUS_STATE.notificationConfig,
+    archiveDocuments: parsed.archiveDocuments ?? INITIAL_ZEUS_STATE.archiveDocuments,
+    flightChecklist: parsed.flightChecklist ?? INITIAL_ZEUS_STATE.flightChecklist,
+    competitionLessons: parsed.competitionLessons ?? INITIAL_ZEUS_STATE.competitionLessons,
   };
 }
 
@@ -277,6 +339,9 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         settingsRes,
         calendarRes,
         votesRes,
+        archiveRes,
+        flightRes,
+        lessonsRes,
       ] = await Promise.all([
         supabase.from("profiles").select("*").order("created_at", { ascending: true }),
         supabase.from("profile_areas").select("*"),
@@ -291,6 +356,9 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         supabase.from("team_settings").select("*").eq("id", 1).maybeSingle(),
         supabase.from("calendar_events").select("*").order("event_date", { ascending: true }),
         supabase.from("concept_votes").select("*"),
+        supabase.from("archive_documents").select("*").order("created_at", { ascending: false }),
+        supabase.from("flight_checklist_items").select("*").order("created_at", { ascending: true }),
+        supabase.from("competition_lessons").select("*").order("created_at", { ascending: false }),
       ]);
 
       const paRows = paRes.data ?? [];
@@ -303,13 +371,15 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         conceptVotes[String(row.profile_id)] = row.concept as AircraftConcept;
       }
 
-      setState({
+      setState((prev) => ({
         currentUserId: user.id,
+        activeSeason: prev.activeSeason ?? 2026,
         competitionDate: settingsRes.data?.competition_date ?? "2027-10-28",
         conceptVotes,
-        notificationConfig: {},
+        notificationConfig: prev.notificationConfig ?? {},
         calendarEvents: (calendarRes.data ?? []).map((ev) => ({
           id: String(ev.id),
+          seasonYear: Number(ev.season_year ?? 2026),
           title: String(ev.title),
           date: String(ev.event_date),
           category: ev.category as CalendarCategory,
@@ -319,6 +389,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         members: (profilesRes.data ?? []).map((p) => mapMember(p, paRows)),
         sprints: (sprintsRes.data ?? []).map((sp) => ({
           id: String(sp.id),
+          seasonYear: Number(sp.season_year ?? 2026),
           name: String(sp.name),
           startDate: String(sp.start_date),
           endDate: String(sp.end_date),
@@ -347,6 +418,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         })),
         reportSections: (sectionsRes.data ?? []).map((r) => ({
           id: String(r.id),
+          seasonYear: Number(r.season_year ?? 2026),
           areaId: String(r.area_id),
           title: String(r.title),
           completed: Boolean(r.completed),
@@ -359,6 +431,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         reportOverrides: overrides,
         meetings: (meetingsRes.data ?? []).map((m) => ({
           id: String(m.id),
+          seasonYear: Number(m.season_year ?? 2026),
           title: String(m.title),
           date: String(m.meeting_date),
           type: m.meeting_type as MeetingType,
@@ -381,13 +454,53 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         })),
         announcements: (announcementsRes.data ?? []).map((a) => ({
           id: String(a.id),
+          seasonYear: Number(a.season_year ?? 2026),
           authorId: String(a.author_id),
           title: String(a.title),
           content: String(a.content),
           pinned: Boolean(a.pinned),
           createdAt: String(a.created_at).slice(0, 10),
         })),
-      });
+        archiveDocuments: (archiveRes.data ?? []).map((d) => ({
+          id: String(d.id),
+          seasonYear: Number(d.season_year ?? 2026),
+          areaId: String(d.area_id),
+          title: String(d.title),
+          docType: d.doc_type as ArchiveDocType,
+          externalUrl: String(d.external_url),
+          summary: String(d.summary ?? ""),
+          impactedAreaIds: Array.isArray(d.impacted_area_ids)
+            ? d.impacted_area_ids.map(String)
+            : [],
+          createdBy: d.created_by ? String(d.created_by) : undefined,
+          createdAt: String(d.created_at).slice(0, 10),
+        })),
+        flightChecklist: (flightRes.data ?? []).map((f) => ({
+          id: String(f.id),
+          seasonYear: Number(f.season_year ?? 2026),
+          category: f.category as FlightCategory,
+          areaId: f.area_id ? String(f.area_id) : undefined,
+          title: String(f.title),
+          critical: Boolean(f.critical),
+          checked: Boolean(f.checked),
+          notes: String(f.notes ?? ""),
+        })),
+        competitionLessons: (lessonsRes.data ?? []).map((l) => ({
+          id: String(l.id),
+          seasonYear: Number(l.season_year ?? 2026),
+          areaId: String(l.area_id),
+          severity: l.severity as LessonSeverity,
+          title: String(l.title),
+          rootCause: String(l.root_cause ?? ""),
+          preventionAction: String(l.prevention_action ?? ""),
+          resolved: Boolean(l.resolved),
+          impactedAreaIds: Array.isArray(l.impacted_area_ids)
+            ? l.impacted_area_ids.map(String)
+            : [],
+          createdBy: l.created_by ? String(l.created_by) : undefined,
+          createdAt: String(l.created_at).slice(0, 10),
+        })),
+      }));
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Erro ao carregar dados do Supabase");
     } finally {
@@ -494,6 +607,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(STORAGE_KEY);
         setState(INITIAL_ZEUS_STATE);
       },
+      setActiveSeason: (year) => setState((s) => ({ ...s, activeSeason: year })),
       toggleMyLabPresence: () => {
         const next = !currentUser.inLabNow;
         setState((s) => ({
@@ -595,14 +709,16 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
           Boolean(input.areaId && canManageArea(currentUser, input.areaId));
         if (!allowed) return;
         const id = newId("ev");
+        const seasonYear = state.activeSeason;
         setState((s) => ({
           ...s,
-          calendarEvents: [{ id, ...input }, ...s.calendarEvents],
+          calendarEvents: [{ id, seasonYear, ...input }, ...s.calendarEvents],
         }));
         if (isSupabaseConfigured && supabase) {
           void runRemote(() =>
             supabase!.from("calendar_events").insert({
               id,
+              season_year: seasonYear,
               title: input.title,
               event_date: input.date,
               category: input.category,
@@ -771,19 +887,27 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
       createSprint: (input) => {
         if (!canApproveInMeeting(currentUser)) return;
         const id = newId("sp");
+        const seasonYear = state.activeSeason;
         setState((s) => ({
           ...s,
           sprints: [
-            { id, ...input, isActive: true },
-            ...s.sprints.map((sp) => ({ ...sp, isActive: false })),
+            { id, seasonYear, ...input, isActive: true },
+            ...s.sprints.map((sp) =>
+              sp.seasonYear === seasonYear ? { ...sp, isActive: false } : sp
+            ),
           ],
         }));
         if (isSupabaseConfigured && supabase) {
           void (async () => {
-            await supabase.from("sprints").update({ is_active: false }).neq("id", id);
+            await supabase
+              .from("sprints")
+              .update({ is_active: false })
+              .eq("season_year", seasonYear)
+              .neq("id", id);
             await runRemote(() =>
               supabase!.from("sprints").insert({
                 id,
+                season_year: seasonYear,
                 name: input.name,
                 start_date: input.startDate,
                 end_date: input.endDate,
@@ -796,7 +920,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
       deleteSprint: (sprintId) => {
         if (!canApproveInMeeting(currentUser)) return;
         const remaining = state.sprints.filter((sp) => sp.id !== sprintId);
-        const hasActive = remaining.some((sp) => sp.isActive);
+        const hasActive = remaining.some((sp) => sp.seasonYear === state.activeSeason && sp.isActive);
         const nextSprints =
           !hasActive && remaining.length > 0
             ? remaining.map((sp, i) => (i === 0 ? { ...sp, isActive: true } : sp))
@@ -837,17 +961,23 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
       addReportSection: (input) => {
         if (!canManageArea(currentUser, input.areaId)) return;
         const id = newId("r");
+        const seasonYear = state.activeSeason;
         setState((s) => ({
           ...s,
-          reportSections: [...s.reportSections, { id, completed: false, ...input }],
+          reportSections: [
+            ...s.reportSections,
+            { id, seasonYear, completed: false, maxScore: 10, ...input },
+          ],
         }));
         if (isSupabaseConfigured && supabase) {
           void runRemote(() =>
             supabase!.from("report_sections").insert({
               id,
+              season_year: seasonYear,
               area_id: input.areaId,
               title: input.title,
               completed: false,
+              max_score: 10,
               impacted_area_ids: input.impactedAreaIds,
               external_url: input.externalUrl ?? null,
             })
@@ -916,6 +1046,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
             : Boolean(input.areaId && canManageArea(currentUser, input.areaId));
         if (!allowed) return;
         const id = newId("mt");
+        const seasonYear = state.activeSeason;
         const approvedMembers = state.members.filter(
           (m) =>
             m.accountStatus === "approved" &&
@@ -923,7 +1054,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         );
         setState((s) => ({
           ...s,
-          meetings: [{ id, ...input, createdBy: currentUser.id }, ...s.meetings],
+          meetings: [{ id, seasonYear, ...input, createdBy: currentUser.id }, ...s.meetings],
           attendance: [
             ...s.attendance,
             ...approvedMembers.map((m) => ({
@@ -937,6 +1068,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
           void (async () => {
             const { error } = await supabase.from("meetings").insert({
               id,
+              season_year: seasonYear,
               title: input.title,
               meeting_date: input.date,
               meeting_type: input.type,
@@ -994,11 +1126,13 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
       createAnnouncement: (input) => {
         if (!canManageAnnouncements(currentUser)) return;
         const id = newId("ann");
+        const seasonYear = state.activeSeason;
         setState((s) => ({
           ...s,
           announcements: [
             {
               id,
+              seasonYear,
               ...input,
               authorId: currentUser.id,
               createdAt: new Date().toISOString().slice(0, 10),
@@ -1010,6 +1144,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
           void runRemote(() =>
             supabase!.from("announcements").insert({
               id,
+              season_year: seasonYear,
               author_id: currentUser.id,
               title: input.title,
               content: input.content,
@@ -1031,6 +1166,171 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
           void runRemote(() =>
             supabase!.from("announcements").update({ pinned: next }).eq("id", id)
           );
+        }
+      },
+      addArchiveDocument: (input) => {
+        if (!canManageArea(currentUser, input.areaId)) return;
+        const id = newId("arc");
+        setState((s) => ({
+          ...s,
+          archiveDocuments: [
+            {
+              id,
+              ...input,
+              createdBy: currentUser.id,
+              createdAt: new Date().toISOString().slice(0, 10),
+            },
+            ...s.archiveDocuments,
+          ],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("archive_documents").insert({
+              id,
+              season_year: input.seasonYear,
+              area_id: input.areaId,
+              title: input.title,
+              doc_type: input.docType,
+              external_url: input.externalUrl,
+              summary: input.summary,
+              impacted_area_ids: input.impactedAreaIds,
+              created_by: currentUser.id,
+            })
+          );
+        }
+      },
+      deleteArchiveDocument: (docId) => {
+        const doc = state.archiveDocuments.find((d) => d.id === docId);
+        if (!doc || !canManageArea(currentUser, doc.areaId)) return;
+        setState((s) => ({
+          ...s,
+          archiveDocuments: s.archiveDocuments.filter((d) => d.id !== docId),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() => supabase!.from("archive_documents").delete().eq("id", docId));
+        }
+      },
+      toggleFlightCheckItem: (itemId) => {
+        const item = state.flightChecklist.find((f) => f.id === itemId);
+        if (!item) return;
+        const next = !item.checked;
+        setState((s) => ({
+          ...s,
+          flightChecklist: s.flightChecklist.map((f) =>
+            f.id === itemId ? { ...f, checked: next } : f
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("flight_checklist_items").update({ checked: next }).eq("id", itemId)
+          );
+        }
+      },
+      addFlightCheckItem: (input) => {
+        const allowed =
+          canApproveInMeeting(currentUser) ||
+          Boolean(input.areaId && canManageArea(currentUser, input.areaId));
+        if (!allowed) return;
+        const id = newId("fl");
+        const seasonYear = state.activeSeason;
+        setState((s) => ({
+          ...s,
+          flightChecklist: [
+            ...s.flightChecklist,
+            { id, seasonYear, checked: false, ...input },
+          ],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("flight_checklist_items").insert({
+              id,
+              season_year: seasonYear,
+              category: input.category,
+              area_id: input.areaId ?? null,
+              title: input.title,
+              critical: input.critical,
+              checked: false,
+              notes: input.notes,
+            })
+          );
+        }
+      },
+      resetFlightChecklist: () => {
+        if (!canApproveInMeeting(currentUser)) return;
+        const seasonYear = state.activeSeason;
+        setState((s) => ({
+          ...s,
+          flightChecklist: s.flightChecklist.map((f) =>
+            f.seasonYear === seasonYear ? { ...f, checked: false } : f
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!
+              .from("flight_checklist_items")
+              .update({ checked: false })
+              .eq("season_year", seasonYear)
+          );
+        }
+      },
+      addCompetitionLesson: (input) => {
+        if (!canManageArea(currentUser, input.areaId)) return;
+        const id = newId("les");
+        setState((s) => ({
+          ...s,
+          competitionLessons: [
+            {
+              id,
+              ...input,
+              resolved: false,
+              createdBy: currentUser.id,
+              createdAt: new Date().toISOString().slice(0, 10),
+            },
+            ...s.competitionLessons,
+          ],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("competition_lessons").insert({
+              id,
+              season_year: input.seasonYear,
+              area_id: input.areaId,
+              severity: input.severity,
+              title: input.title,
+              root_cause: input.rootCause,
+              prevention_action: input.preventionAction,
+              resolved: false,
+              impacted_area_ids: input.impactedAreaIds,
+              created_by: currentUser.id,
+            })
+          );
+        }
+      },
+      toggleLessonResolved: (lessonId) => {
+        const les = state.competitionLessons.find((l) => l.id === lessonId);
+        if (!les || !canManageArea(currentUser, les.areaId)) return;
+        const next = !les.resolved;
+        setState((s) => ({
+          ...s,
+          competitionLessons: s.competitionLessons.map((l) =>
+            l.id === lessonId ? { ...l, resolved: next } : l
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() =>
+            supabase!.from("competition_lessons").update({ resolved: next }).eq("id", lessonId)
+          );
+        }
+      },
+      deleteCompetitionLesson: (lessonId) => {
+        const les = state.competitionLessons.find((l) => l.id === lessonId);
+        if (!les || !canManageArea(currentUser, les.areaId)) return;
+        setState((s) => ({
+          ...s,
+          competitionLessons: s.competitionLessons.filter((l) => l.id !== lessonId),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(() => supabase!.from("competition_lessons").delete().eq("id", lessonId));
         }
       },
       simulateSignup: (input) => {

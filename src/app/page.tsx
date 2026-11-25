@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { AdminView } from "@/components/AdminView";
 import { AppShell, type NavTab } from "@/components/AppShell";
+import { ArchiveView } from "@/components/ArchiveView";
 import { AreasView } from "@/components/AreasView";
 import { AuthGate } from "@/components/AuthGate";
 import { CalendarView } from "@/components/CalendarView";
 import { DashboardView } from "@/components/DashboardView";
+import { FlightLessonsView } from "@/components/FlightLessonsView";
 import { KnowledgeGraphView } from "@/components/KnowledgeGraphView";
 import { MeetingsView } from "@/components/MeetingsView";
 import { MemberProfileModal } from "@/components/MemberProfileModal";
@@ -31,6 +33,8 @@ export default function HomePage() {
           {activeTab === "sprints" && <SprintsView onOpenProfile={setProfileMemberId} />}
           {activeTab === "areas" && <AreasView onOpenProfile={setProfileMemberId} />}
           {activeTab === "graph" && <KnowledgeGraphView />}
+          {activeTab === "archive" && <ArchiveView />}
+          {activeTab === "flight" && <FlightLessonsView />}
           {activeTab === "calendar" && <CalendarView />}
           {activeTab === "ranking" && <RankingView onOpenProfile={setProfileMemberId} />}
           {activeTab === "meetings" && <MeetingsView onOpenProfile={setProfileMemberId} />}

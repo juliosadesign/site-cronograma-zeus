@@ -2,16 +2,19 @@
 
 import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ArrowRight,
   BarChart3,
   Calendar,
   CalendarCheck,
   CheckCircle2,
   FileText,
+  Filter,
   Flame,
   MapPin,
   Megaphone,
   Pin,
+  Plane,
   Plus,
   Trophy,
 } from "lucide-react";
@@ -19,12 +22,15 @@ import {
   canManageAnnouncements,
   computeAttendanceStats,
   computeDaysUntil,
+  computeFlightReadiness,
   computeTeamReportPercentage,
   evaluateScheduleHealth,
   getMemberLabStatus,
+  isDateInPeriod,
   ZEUS_AREAS,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
+import type { PeriodFilter } from "@/lib/types";
 import { AircraftBlueprint3D } from "./AircraftBlueprint3D";
 import { AreaChip, RoleBadge } from "./Badge";
 import {
@@ -51,6 +57,7 @@ export function DashboardView({
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pinned, setPinned] = useState(true);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
 
   const [nowInfo, setNowInfo] = useState<{ iso: string; dayOfWeek: number; minutes: number } | null>(null);
   useEffect(() => {
@@ -62,8 +69,19 @@ export function DashboardView({
     });
   }, []);
 
-  const activeSprint = state.sprints.find((s) => s.isActive) ?? state.sprints[0];
-  const activeTasks = state.tasks.filter((t) => t.sprintId === activeSprint?.id);
+  const seasonSprints = state.sprints.filter(
+    (s) => s.seasonYear === state.activeSeason && isDateInPeriod(s.startDate, periodFilter)
+  );
+  const fallbackSeasonSprints = state.sprints.filter((s) => s.seasonYear === state.activeSeason);
+  const activeSprint =
+    seasonSprints.find((s) => s.isActive) ??
+    seasonSprints[seasonSprints.length - 1] ??
+    fallbackSeasonSprints.find((s) => s.isActive);
+  const seasonSprintIds = new Set(seasonSprints.map((s) => s.id));
+  const seasonTasks = state.tasks.filter((t) => seasonSprintIds.has(t.sprintId));
+  const activeTasks = activeSprint
+    ? state.tasks.filter((t) => t.sprintId === activeSprint.id)
+    : [];
   const approvedInSprint = activeTasks.filter((t) => t.meetingApproved).length;
   const awaitingMeeting = activeTasks.filter((t) => t.directorValidated && !t.meetingApproved).length;
 
@@ -71,11 +89,25 @@ export function DashboardView({
   const yellowCount = activeTasks.filter((t) => t.status === "yellow").length;
   const redCount = activeTasks.filter((t) => t.status === "red").length;
 
+  const seasonReports = state.reportSections.filter(
+    (r) => r.seasonYear === state.activeSeason
+  );
+  const seasonMeetings = state.meetings.filter(
+    (m) => m.seasonYear === state.activeSeason && isDateInPeriod(m.date, periodFilter)
+  );
+  const seasonAnnouncements = state.announcements.filter(
+    (a) => a.seasonYear === state.activeSeason && isDateInPeriod(a.createdAt, periodFilter)
+  );
+
   const { teamPercentage, byArea } = computeTeamReportPercentage(
     ZEUS_AREAS,
-    state.reportSections,
+    seasonReports,
     state.reportOverrides
   );
+  const flightReadiness = computeFlightReadiness(state.flightChecklist);
+  const unresolvedCriticalLessons = state.competitionLessons.filter(
+    (l) => !l.resolved && l.severity === "critico"
+  ).length;
 
   const approvedMembers = state.members.filter((m) => m.accountStatus === "approved");
   const labEntries = approvedMembers
@@ -111,10 +143,10 @@ export function DashboardView({
             (areaTasks.filter((t) => t.status === "green").length / areaTasks.length) * 100
           );
     const linksCount =
-      state.reportSections.filter(
+      seasonReports.filter(
         (r) => r.areaId === item.areaId || r.impactedAreaIds.includes(item.areaId)
       ).length +
-      state.tasks.filter(
+      seasonTasks.filter(
         (t) => t.areaId === item.areaId || t.impactedAreaIds.includes(item.areaId)
       ).length;
     return {
@@ -125,7 +157,7 @@ export function DashboardView({
     };
   });
 
-  const sortedAnnouncements = [...state.announcements].sort(
+  const sortedAnnouncements = [...seasonAnnouncements].sort(
     (a, b) => Number(b.pinned) - Number(a.pinned)
   );
   const canPost = canManageAnnouncements(currentUser);
@@ -143,14 +175,33 @@ export function DashboardView({
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Central de Telemetria · Zeus</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight">
+              Central de Telemetria · Zeus {state.activeSeason}
+            </h1>
+            <span className="rounded-full border border-blue-500/40 bg-blue-500/10 px-2 py-0.5 text-[10px] font-mono text-blue-400">
+              {seasonSprints.length} sprints no recorte
+            </span>
+          </div>
           <p className="text-xs text-[var(--ink-subtle)]">
             {activeSprint
               ? `${activeSprint.name} (${activeSprint.startDate} → ${activeSprint.endDate})`
-              : "Nenhuma sprint ativa — crie uma na aba Sprints"}
+              : `Nenhuma sprint no período selecionado em ${state.activeSeason}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onNavigate("flight")}
+            className="zeus-btn inline-flex items-center gap-1.5 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-medium hover:border-blue-500/60"
+          >
+            <Plane className="h-3.5 w-3.5 text-sky-400" />
+            Prontidão {flightReadiness.percentage}%
+            {unresolvedCriticalLessons > 0 && (
+              <span className="ml-0.5 inline-flex items-center gap-0.5 text-rose-400 font-mono">
+                · <AlertTriangle className="h-3 w-3" /> {unresolvedCriticalLessons}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => onNavigate("calendar")}
             className="zeus-btn inline-flex items-center gap-1.5 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-medium hover:border-amber-500/60"
@@ -163,6 +214,37 @@ export function DashboardView({
           >
             Abrir Sprints <ArrowRight className="h-3.5 w-3.5" />
           </button>
+        </div>
+      </div>
+
+      {/* Period Filter Bar for Retrospective / Snapshot Presentation */}
+      <div className="zeus-card rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs text-[var(--ink-subtle)]">
+          <Filter className="h-3.5 w-3.5 text-blue-400" />
+          <span>Recorte temporal ({state.activeSeason}):</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              { id: "all", label: "Ano todo" },
+              { id: "q1", label: "Jan–Mar" },
+              { id: "h1", label: "Até Junho (Jan–Jun)" },
+              { id: "q3", label: "Jul–Set" },
+              { id: "q4", label: "Out–Dez" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => setPeriodFilter(opt.id)}
+              className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                periodFilter === opt.id
+                  ? "border-blue-500/70 bg-blue-600/20 text-blue-300"
+                  : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -240,7 +322,7 @@ export function DashboardView({
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-2xl font-semibold font-mono">{avgAttendanceRate}%</span>
               <span className="text-[11px] text-sky-400 font-mono">
-                {state.meetings.length} reun.
+                {seasonMeetings.length} reun.
               </span>
             </div>
             <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">Frequência média</div>

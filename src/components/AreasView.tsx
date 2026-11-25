@@ -42,18 +42,21 @@ export function AreasView({
   const [noteContent, setNoteContent] = useState("");
   const [noteUrl, setNoteUrl] = useState("");
 
+  const seasonReports = state.reportSections.filter(
+    (r) => r.seasonYear === state.activeSeason
+  );
   const area = ZEUS_AREAS.find((a) => a.id === selectedAreaId) ?? ZEUS_AREAS[0];
   const areaMembers = state.members.filter(
     (m) => m.accountStatus === "approved" && m.areaIds.includes(area.id)
   );
-  const areaSections = state.reportSections.filter((r) => r.areaId === area.id);
+  const areaSections = seasonReports.filter((r) => r.areaId === area.id);
   const override = state.reportOverrides[area.id] ?? null;
-  const pct = computeReportPercentage(area.id, state.reportSections, override);
-  const areaScore = computeProjectedReportScore(state.reportSections, area.id);
-  const teamScore = computeProjectedReportScore(state.reportSections);
+  const pct = computeReportPercentage(area.id, seasonReports, override);
+  const areaScore = computeProjectedReportScore(seasonReports, area.id);
+  const teamScore = computeProjectedReportScore(seasonReports);
   const { teamPercentage } = computeTeamReportPercentage(
     ZEUS_AREAS,
-    state.reportSections,
+    seasonReports,
     state.reportOverrides
   );
 
@@ -67,7 +70,7 @@ export function AreasView({
 
   const receivesFromAreaIds = Array.from(
     new Set([
-      ...state.reportSections
+      ...seasonReports
         .filter((s) => s.areaId !== area.id && s.impactedAreaIds.includes(area.id))
         .map((s) => s.areaId),
       ...state.tasks

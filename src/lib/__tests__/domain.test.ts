@@ -8,6 +8,7 @@ import {
   computeAttendanceStats,
   computeConceptVoteTally,
   computeDaysUntil,
+  computeFlightReadiness,
   computeForecastTarget,
   computeMemberPoints,
   computeProjectedReportScore,
@@ -17,6 +18,7 @@ import {
   evaluateScheduleHealth,
   getInitials,
   getMemberLabStatus,
+  isDateInPeriod,
   isWithinLabSlots,
   projectTeamProgressAt,
   ZEUS_AREAS,
@@ -85,9 +87,9 @@ assert.equal(canUpdateTaskStatus(diretorAero, tasks[0]), true);
 
 // Relatórios: cálculo automático e override manual
 const sections: ReportSection[] = [
-  { id: "r1", areaId: "aerodinamica", title: "1", completed: true, impactedAreaIds: [] },
-  { id: "r2", areaId: "aerodinamica", title: "2", completed: true, impactedAreaIds: [] },
-  { id: "r3", areaId: "aerodinamica", title: "3", completed: false, impactedAreaIds: [] },
+  { id: "r1", seasonYear: 2026, areaId: "aerodinamica", title: "1", completed: true, impactedAreaIds: [] },
+  { id: "r2", seasonYear: 2026, areaId: "aerodinamica", title: "2", completed: true, impactedAreaIds: [] },
+  { id: "r3", seasonYear: 2026, areaId: "aerodinamica", title: "3", completed: false, impactedAreaIds: [] },
 ];
 assert.equal(computeReportPercentage("aerodinamica", sections), 67);
 assert.equal(computeReportPercentage("aerodinamica", sections, 85), 85);
@@ -140,8 +142,8 @@ assert.equal(getMemberLabStatus({ ...dev, inLabNow: false, labSlots: slots }, 2,
 assert.equal(getMemberLabStatus({ ...dev, inLabNow: false, labSlots: slots }, 1, 15 * 60), "away");
 
 const scoredSections: ReportSection[] = [
-  { id: "s1", areaId: "aerodinamica", title: "A", completed: true, impactedAreaIds: ["desempenho"], maxScore: 20 },
-  { id: "s2", areaId: "aerodinamica", title: "B", completed: false, impactedAreaIds: ["cargas"], maxScore: 10 },
+  { id: "s1", seasonYear: 2026, areaId: "aerodinamica", title: "A", completed: true, impactedAreaIds: ["desempenho"], maxScore: 20 },
+  { id: "s2", seasonYear: 2026, areaId: "aerodinamica", title: "B", completed: false, impactedAreaIds: ["cargas"], maxScore: 10 },
 ];
 assert.deepEqual(computeProjectedReportScore(scoredSections, "aerodinamica"), {
   earned: 20,
@@ -155,5 +157,15 @@ assert.equal(edges[0].from, "aerodinamica");
 
 const tally = computeConceptVoteTally({ a: "monoplano", b: "asa_voadora", c: "monoplano" });
 assert.deepEqual(tally, { monoplano: 2, biplano: 0, asa_voadora: 1 });
+
+assert.equal(isDateInPeriod("2026-06-15", "h1"), true);
+assert.equal(isDateInPeriod("2026-08-01", "h1"), false);
+assert.equal(isDateInPeriod("2026-08-01", "q3"), true);
+
+const flightStats = computeFlightReadiness([
+  { id: "f1", seasonYear: 2026, category: "estrutural", title: "Longarina", critical: true, checked: true, notes: "" },
+  { id: "f2", seasonYear: 2026, category: "seguranca", title: "Fail-safe", critical: true, checked: false, notes: "" },
+]);
+assert.deepEqual(flightStats, { checked: 1, total: 2, criticalPending: 1, percentage: 50 });
 
 console.log("All Zeus domain & RBAC tests passed!");

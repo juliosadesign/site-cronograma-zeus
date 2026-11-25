@@ -1,9 +1,13 @@
 import type {
   AircraftConcept,
+  ArchiveDocument,
   Area,
+  CompetitionLesson,
+  FlightChecklistItem,
   LabSlot,
   MeetingAttendance,
   Member,
+  PeriodFilter,
   Priority,
   ReportSection,
   Role,
@@ -326,14 +330,39 @@ export interface AreaGraphEdge {
   items: Array<{
     id: string;
     title: string;
-    kind: "task" | "report";
+    kind: "task" | "report" | "archive" | "lesson";
     priority?: Priority;
   }>;
 }
 
+export function isDateInPeriod(dateIso: string, period: PeriodFilter): boolean {
+  if (period === "all") return true;
+  const month = Number(dateIso.slice(5, 7));
+  if (!month || Number.isNaN(month)) return true;
+  if (period === "q1") return month >= 1 && month <= 3;
+  if (period === "h1") return month >= 1 && month <= 6;
+  if (period === "q3") return month >= 7 && month <= 9;
+  return month >= 10 && month <= 12;
+}
+
+export function computeFlightReadiness(items: FlightChecklistItem[]): {
+  checked: number;
+  total: number;
+  criticalPending: number;
+  percentage: number;
+} {
+  const total = items.length;
+  const checked = items.filter((i) => i.checked).length;
+  const criticalPending = items.filter((i) => i.critical && !i.checked).length;
+  const percentage = total === 0 ? 0 : Math.round((checked / total) * 100);
+  return { checked, total, criticalPending, percentage };
+}
+
 export function computeAreaGraphEdges(
   tasks: SprintTask[],
-  sections: ReportSection[]
+  sections: ReportSection[],
+  archiveDocs: ArchiveDocument[] = [],
+  lessons: CompetitionLesson[] = []
 ): AreaGraphEdge[] {
   const map = new Map<string, AreaGraphEdge>();
   const ensure = (from: string, to: string) => {
@@ -362,6 +391,25 @@ export function computeAreaGraphEdges(
       const edge = ensure(r.areaId, to);
       edge.weight += 1;
       edge.items.push({ id: r.id, title: r.title, kind: "report" });
+    }
+  }
+
+  for (const doc of archiveDocs) {
+    for (const to of doc.impactedAreaIds) {
+      if (to === doc.areaId) continue;
+      const edge = ensure(doc.areaId, to);
+      edge.weight += 1;
+      edge.items.push({ id: doc.id, title: doc.title, kind: "archive" });
+    }
+  }
+
+  for (const les of lessons) {
+    for (const to of les.impactedAreaIds) {
+      if (to === les.areaId) continue;
+      const edge = ensure(les.areaId, to);
+      edge.weight += 1;
+      if (les.severity === "critico") edge.criticalCount += 1;
+      edge.items.push({ id: les.id, title: les.title, kind: "lesson" });
     }
   }
 

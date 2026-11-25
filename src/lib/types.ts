@@ -13,6 +13,11 @@ export type AttendanceStatus = "present" | "absent" | "justified";
 export type MeetingType = "general" | "area";
 export type CalendarCategory = "competition" | "meeting" | "sprint" | "deadline";
 export type AircraftConcept = "monoplano" | "biplano" | "asa_voadora";
+export type SeasonYear = 2026 | 2027;
+export type PeriodFilter = "all" | "q1" | "h1" | "q3" | "q4";
+export type ArchiveDocType = "relatorio" | "planilha" | "cad" | "apresentacao" | "ata";
+export type FlightCategory = "estrutural" | "aerodinamica" | "propulsao" | "cg_peso" | "seguranca";
+export type LessonSeverity = "critico" | "alto" | "medio";
 
 export interface LabSlot {
   day: number; // 0 = Dom .. 6 = Sab
@@ -53,6 +58,7 @@ export interface Member {
 
 export interface Sprint {
   id: string;
+  seasonYear: number;
   name: string;
   startDate: string;
   endDate: string;
@@ -81,6 +87,7 @@ export interface SprintTask {
 
 export interface ReportSection {
   id: string;
+  seasonYear: number;
   areaId: string;
   title: string;
   completed: boolean;
@@ -92,6 +99,7 @@ export interface ReportSection {
 
 export interface Meeting {
   id: string;
+  seasonYear: number;
   title: string;
   date: string;
   type: MeetingType;
@@ -117,6 +125,7 @@ export interface AreaNote {
 
 export interface Announcement {
   id: string;
+  seasonYear: number;
   authorId: string;
   title: string;
   content: string;
@@ -126,6 +135,7 @@ export interface Announcement {
 
 export interface CalendarEvent {
   id: string;
+  seasonYear: number;
   title: string;
   date: string;
   category: CalendarCategory;
@@ -133,8 +143,47 @@ export interface CalendarEvent {
   areaId?: string;
 }
 
+export interface ArchiveDocument {
+  id: string;
+  seasonYear: number;
+  areaId: string;
+  title: string;
+  docType: ArchiveDocType;
+  externalUrl: string;
+  summary: string;
+  impactedAreaIds: string[];
+  createdBy?: string;
+  createdAt: string;
+}
+
+export interface FlightChecklistItem {
+  id: string;
+  seasonYear: number;
+  category: FlightCategory;
+  areaId?: string;
+  title: string;
+  critical: boolean;
+  checked: boolean;
+  notes: string;
+}
+
+export interface CompetitionLesson {
+  id: string;
+  seasonYear: number;
+  areaId: string;
+  severity: LessonSeverity;
+  title: string;
+  rootCause: string;
+  preventionAction: string;
+  resolved: boolean;
+  impactedAreaIds: string[];
+  createdBy?: string;
+  createdAt: string;
+}
+
 export interface ZeusState {
   currentUserId: string;
+  activeSeason: SeasonYear;
   competitionDate: string;
   calendarEvents: CalendarEvent[];
   conceptVotes: Record<string, AircraftConcept>;
@@ -148,4 +197,7 @@ export interface ZeusState {
   attendance: MeetingAttendance[];
   areaNotes: AreaNote[];
   announcements: Announcement[];
+  archiveDocuments: ArchiveDocument[];
+  flightChecklist: FlightChecklistItem[];
+  competitionLessons: CompetitionLesson[];
 }
