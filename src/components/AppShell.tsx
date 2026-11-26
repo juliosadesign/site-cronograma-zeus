@@ -10,7 +10,9 @@ import {
   Command,
   DollarSign,
   FolderLock,
+  Ghost,
   GitCommitHorizontal,
+  HelpCircle,
   LayoutDashboard,
   ListChecks,
   Lock,
@@ -21,11 +23,13 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  Rocket,
   RotateCcw,
   Search,
   ShieldCheck,
   Sun,
   Trophy,
+  X,
   Zap,
 } from "lucide-react";
 import {
@@ -64,17 +68,21 @@ export function AppShell({
   onTabChange,
   onOpenProfile,
   onOpenPalette,
+  onOpenTour,
   children,
 }: {
   activeTab: NavTab;
   onTabChange: (tab: NavTab) => void;
   onOpenProfile: (memberId: string) => void;
   onOpenPalette: () => void;
+  onOpenTour?: () => void;
   children: React.ReactNode;
 }) {
   const {
     state,
     currentUser,
+    ghostMembersEnabled,
+    toggleGhostMembers,
     switchUser,
     resetDemo,
     toggleMyLabPresence,
@@ -84,6 +92,16 @@ export function AppShell({
   const [dark, setDark] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
   const [quickJump, setQuickJump] = useState("");
+  const [show2027Modal, setShow2027Modal] = useState(false);
+
+  useEffect(() => {
+    if (!show2027Modal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShow2027Modal(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [show2027Modal]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_KEY);
@@ -254,7 +272,7 @@ export function AppShell({
           </div>
         )}
 
-        <nav className="flex-1 p-2.5 space-y-4 overflow-y-auto">
+        <nav data-tour="sidebar-nav" className="flex-1 p-2.5 space-y-4 overflow-y-auto">
           {/* Group 1: Engenharia & Plataforma */}
           <div className="space-y-1">
             {!collapsed && (
@@ -437,14 +455,23 @@ export function AppShell({
 
           <div className="flex items-center gap-2.5 text-xs text-[var(--ink-subtle)]">
             {/* Season Switcher: ZEUS 2026 | ZEUS 2027 */}
-            <div className="inline-flex rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-2)] p-0.5 font-mono text-[11px]">
+            <div
+              data-tour="season-switcher"
+              className="inline-flex rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-2)] p-0.5 font-mono text-[11px]"
+            >
               {([2026, 2027] as SeasonYear[]).map((yr) => {
                 const active = state.activeSeason === yr;
                 return (
                   <button
                     key={yr}
                     type="button"
-                    onClick={() => setActiveSeason(yr)}
+                    onClick={() => {
+                      if (yr === 2027) {
+                        setShow2027Modal(true);
+                      } else {
+                        setActiveSeason(2026);
+                      }
+                    }}
                     className={`rounded-md px-2 py-1 font-semibold transition-colors ${
                       active
                         ? "bg-blue-600 text-white"
@@ -463,7 +490,18 @@ export function AppShell({
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div data-tour="header-actions" className="flex items-center gap-2">
+            {onOpenTour && (
+              <button
+                type="button"
+                onClick={onOpenTour}
+                title="Abrir tutorial guiado da plataforma"
+                className="zeus-btn h-8 rounded-md border border-sky-500/35 bg-sky-500/10 px-2.5 text-xs font-medium text-sky-300 hover:bg-sky-500/20 inline-flex items-center gap-1.5"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">Tutorial</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onOpenPalette}
@@ -476,6 +514,24 @@ export function AppShell({
                 Ctrl+K
               </kbd>
             </button>
+
+            {canApproveAccounts(currentUser) && (
+              <button
+                type="button"
+                onClick={toggleGhostMembers}
+                title="Ativa ou desativa membros fantasmas com os nomes reais da equipe para demonstração (não altera o banco de dados)"
+                className={`zeus-btn h-8 rounded-md border px-2.5 text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
+                  ghostMembersEnabled
+                    ? "border-violet-500/60 bg-violet-500/15 text-violet-300"
+                    : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+                }`}
+              >
+                <Ghost className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">
+                  {ghostMembersEnabled ? "Fantasmas: ON" : "Fantasmas: OFF"}
+                </span>
+              </button>
+            )}
 
             <button
               onClick={toggleMyLabPresence}
@@ -507,11 +563,13 @@ export function AppShell({
                   }}
                   className="h-8 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 text-xs text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-amber-500"
                 >
-                  {approvedMembers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.fullName} ({ROLE_META[m.role].label})
-                    </option>
-                  ))}
+                  {approvedMembers
+                    .filter((m) => !m.isGhost)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.fullName} ({ROLE_META[m.role].label})
+                      </option>
+                    ))}
                 </select>
               </label>
             )}
@@ -530,7 +588,10 @@ export function AppShell({
       </div>
 
       {/* Mobile PWA Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[var(--hairline)] bg-[var(--surface-1)]/95 backdrop-blur flex overflow-x-auto px-1 py-1.5 gap-1">
+      <nav
+        data-tour="mobile-nav"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[var(--hairline)] bg-[var(--surface-1)]/95 backdrop-blur flex overflow-x-auto px-1 py-1.5 gap-1"
+      >
         {allNav.map((item) => {
           const Icon = item.icon;
           const active = activeTab === item.id;
@@ -553,6 +614,77 @@ export function AppShell({
           );
         })}
       </nav>
+
+      {/* Modal 2027: EM BREVE NOVIDADES */}
+      {show2027Modal && (
+        <div
+          onClick={() => setShow2027Modal(false)}
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="ZEUS 2027 Em breve novidades"
+            className="w-full max-w-md zeus-card zeus-tour-card rounded-2xl border-[1.5px] border-amber-500/50 bg-[var(--surface-1)] shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--hairline)] bg-amber-500/10">
+              <div className="inline-flex items-center gap-2 text-xs font-mono font-bold text-amber-300">
+                <Rocket className="h-4 w-4 text-amber-400" />
+                ZEUS 2027 · PRÓXIMA TEMPORADA
+              </div>
+              <button
+                type="button"
+                onClick={() => setShow2027Modal(false)}
+                aria-label="Fechar aviso de 2027"
+                className="h-7 w-7 rounded-md border border-[var(--hairline)] flex items-center justify-center text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="p-6 text-center space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/50 bg-amber-500/15 px-3 py-1 text-[11px] font-mono font-bold tracking-wide text-amber-300">
+                LISTA DE MEMBROS AINDA PARA ATUALIZAR
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-[var(--ink)]">
+                EM BREVE NOVIDADES
+              </h2>
+              <p className="text-xs text-[var(--ink-muted)] leading-relaxed">
+                Todos os dados atuais da equipe e do cronograma permanecem organizados no ciclo{" "}
+                <strong>ZEUS 2026</strong>. Como alguns membros encerram ciclo e novos integrantes
+                vão compor a equipe para 2027, a nova lista oficial de membros e metas da próxima
+                temporada ainda será atualizada aqui.
+              </p>
+
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSeason(2026);
+                    setShow2027Modal(false);
+                  }}
+                  className="w-full sm:w-auto zeus-btn rounded-md bg-blue-600 hover:bg-blue-500 px-4 py-2 text-xs font-semibold text-white"
+                >
+                  Continuar em ZEUS 2026
+                </button>
+                {canApproveAccounts(currentUser) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveSeason(2027);
+                      setShow2027Modal(false);
+                    }}
+                    className="w-full sm:w-auto rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-3 py-2 text-[11px] text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+                  >
+                    Abrir rascunho 2027 (Liderança)
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -105,7 +105,14 @@ export function RankingView({
                     <div className="flex items-center gap-2.5">
                       <MemberAvatar member={entry.member} size="sm" />
                       <div>
-                        <div className="font-medium">{entry.member.fullName}</div>
+                        <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                          <span>{entry.member.fullName}</span>
+                          {entry.member.isGhost && (
+                            <span className="rounded-full border border-violet-500/40 bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-300">
+                              Fantasma
+                            </span>
+                          )}
+                        </div>
                         {entry.member.inLabNow && (
                           <div className="text-[10px] text-emerald-400">Na sala agora</div>
                         )}
@@ -113,7 +120,11 @@ export function RankingView({
                     </div>
                   </td>
                   <td className="py-3 px-3">
-                    <RoleBadge role={entry.member.role} />
+                    {entry.member.isGhost && !entry.member.roleConfirmed ? (
+                      <span className="text-[11px] text-[var(--ink-subtle)]">—</span>
+                    ) : (
+                      <RoleBadge role={entry.member.role} />
+                    )}
                   </td>
                   <td className="py-3 px-3">
                     <div className="flex flex-wrap gap-1">

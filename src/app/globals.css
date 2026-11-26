@@ -103,6 +103,33 @@ body {
   }
 }
 
+@keyframes zeusTourPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 9999px rgba(4, 7, 15, 0.72),
+      0 0 0 2px rgba(56, 189, 248, 0.95),
+      0 0 28px 4px rgba(56, 189, 248, 0.55);
+  }
+  50% {
+    box-shadow:
+      0 0 0 9999px rgba(4, 7, 15, 0.72),
+      0 0 0 4px rgba(251, 191, 36, 0.95),
+      0 0 38px 8px rgba(245, 158, 11, 0.55);
+  }
+}
+
+@keyframes zeusTourCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .zeus-tab-enter {
   animation: zeusTabEnter 320ms var(--ease-enter) both;
 }
@@ -114,6 +141,15 @@ body {
 
 .zeus-comp-day {
   animation: zeusCompGlow 2.6s ease-in-out infinite;
+}
+
+.zeus-tour-spotlight {
+  transition: top 280ms var(--ease-enter), left 280ms var(--ease-enter), width 280ms var(--ease-enter), height 280ms var(--ease-enter);
+  animation: zeusTourPulse 2.1s ease-in-out infinite;
+}
+
+.zeus-tour-card {
+  animation: zeusTourCardIn 240ms var(--ease-enter) both;
 }
 
 .zeus-btn {
@@ -149,7 +185,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .zeus-tab-enter,
   .zeus-bar-grow-x,
-  .zeus-comp-day {
+  .zeus-comp-day,
+  .zeus-tour-spotlight,
+  .zeus-tour-card {
     animation: none !important;
   }
   .zeus-btn,

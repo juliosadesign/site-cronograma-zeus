@@ -19,7 +19,9 @@ import {
   computeReportPercentage,
   computeTeamReportPercentage,
   CORPORATE_AREAS,
+  doesDateRangeOverlap,
   evaluateScheduleHealth,
+  formatIsoToBr,
   getAreaCardStyle,
   getAreaMeta,
   getInitials,
@@ -29,11 +31,19 @@ import {
   getReportOverrideKey,
   isDateInPeriod,
   isWithinLabSlots,
+  parseFlexibleDateInput,
   projectTeamProgressAt,
   TECHNICAL_AREAS,
   ZEUS_AREAS,
 } from "../domain.ts";
-import type { FinancialTransaction, Member, MeetingAttendance, ReportSection, SprintTask } from "../types.ts";
+import {
+  applyGhostMembersOverlay,
+  doesTaskCitationMatchGhost,
+  getUnallocatedGhosts,
+  GHOST_TEAM_ROSTER,
+  isGhostMemberId,
+} from "../ghost-members.ts";
+import type { FinancialTransaction, Member, MeetingAttendance, ReportSection, SprintTask, ZeusState } from "../types.ts";
 
 assert.equal(ZEUS_AREAS.length, 11, "Deve conter exatamente 11 áreas da Zeus AeroDesign");
 assert.equal(TECHNICAL_AREAS.length, 8, "Devem existir 8 áreas técnicas");
@@ -252,5 +262,194 @@ for (const area of ZEUS_AREAS) {
 }
 const customTint = buildTintedCardStyle("#f59e0b", { active: true, emphasis: "strong" });
 assert.equal(customTint.borderColor, "#f59e0b");
+
+// Flexible date parsing & overlap tests
+assert.deepEqual(parseFlexibleDateInput("15/03/2026"), {
+  startIso: "2026-03-15",
+  endIso: "2026-03-15",
+  label: "15/03/2026",
+});
+assert.deepEqual(parseFlexibleDateInput("2026-04-05"), {
+  startIso: "2026-04-05",
+  endIso: "2026-04-05",
+  label: "05/04/2026",
+});
+assert.deepEqual(parseFlexibleDateInput("12/08", 2026), {
+  startIso: "2026-08-12",
+  endIso: "2026-08-12",
+  label: "12/08/2026",
+});
+assert.deepEqual(parseFlexibleDateInput("03/2026"), {
+  startIso: "2026-03-01",
+  endIso: "2026-03-31",
+  label: "Mar/2026",
+});
+assert.deepEqual(parseFlexibleDateInput("março", 2026), {
+  startIso: "2026-03-01",
+  endIso: "2026-03-31",
+  label: "Mar/2026",
+});
+assert.deepEqual(parseFlexibleDateInput("abr 2026"), {
+  startIso: "2026-04-01",
+  endIso: "2026-04-30",
+  label: "Abr/2026",
+});
+assert.equal(parseFlexibleDateInput("31/02/2026"), null);
+assert.equal(formatIsoToBr("2026-10-25"), "25/10/2026");
+
+assert.equal(doesDateRangeOverlap("2026-03-01", "2026-03-15", "2026-03-10", "2026-03-20"), true);
+assert.equal(doesDateRangeOverlap("2026-03-01", "2026-03-15", "2026-03-20", "2026-03-30"), false);
+
+// Ghost members presentation overlay tests
+const baseOverlayState: ZeusState = {
+  currentUserId: dev.id,
+  activeSeason: 2026,
+  competitionDate: "2026-10-30",
+  members: [
+    dev,
+    {
+      ...diretorAero,
+      id: "real-jodson",
+      fullName: "Jodson Monteiro Pestana",
+      areaIds: ["aerodinamica"],
+    },
+  ],
+  sprints: [],
+  tasks: [
+    {
+      id: "t-wm",
+      sprintId: "sp1",
+      areaId: "eletrico",
+      assigneeId: "",
+      createdBy: dev.id,
+      title: "Dimensionamento de baterias",
+      description: "Citação na planilha: W. Mateus",
+      priority: "high",
+      status: "red",
+      directorValidated: false,
+      meetingApproved: false,
+      impactedAreaIds: [],
+      createdAt: "2026-03-01",
+    },
+    {
+      id: "t-mat",
+      sprintId: "sp1",
+      areaId: "estruturas",
+      assigneeId: "",
+      createdBy: dev.id,
+      title: "Longarina",
+      description: "Citação na planilha: Mateus",
+      priority: "medium",
+      status: "yellow",
+      directorValidated: false,
+      meetingApproved: false,
+      impactedAreaIds: [],
+      createdAt: "2026-03-01",
+    },
+    {
+      id: "t-shell",
+      sprintId: "sp1",
+      areaId: "desempenho",
+      assigneeId: "",
+      createdBy: dev.id,
+      title: "Envelope de decolagem",
+      description: "Citação na planilha: Shell",
+      priority: "high",
+      status: "green",
+      directorValidated: false,
+      meetingApproved: false,
+      impactedAreaIds: [],
+      createdAt: "2026-03-01",
+    },
+  ],
+  reportSections: [],
+  reportOverrides: {},
+  meetings: [],
+  attendance: [],
+  areaNotes: [],
+  areaFeatureRequests: [],
+  ghostAllocations: {},
+  announcements: [],
+  calendarEvents: [],
+  conceptVotes: {},
+  taskComments: [],
+  archiveDocuments: [],
+  flightChecklist: [],
+  competitionLessons: [],
+  financialTransactions: [],
+  areaBudgets: [],
+  marketingCampaigns: [],
+  teamOKRs: [],
+  aircraftRevisions: [],
+  notificationConfig: {
+    autoNotifyAnnouncements: false,
+    autoNotifyApprovals: false,
+    autoNotifyBlockers: false,
+  },
+};
+
+assert.equal(applyGhostMembersOverlay(baseOverlayState, false).members.length, 2);
+const ghostEnabledState = applyGhostMembersOverlay(baseOverlayState, true);
+assert.equal(
+  ghostEnabledState.members.filter((m) => m.fullName === "Jodson Monteiro Pestana").length,
+  1,
+  "Não deve duplicar membro real já cadastrado com o mesmo nome"
+);
+const allanaGhost = ghostEnabledState.members.find(
+  (m) => m.fullName === "Allana Mirelle Marques Menezes"
+);
+assert.ok(allanaGhost?.isGhost && isGhostMemberId(allanaGhost.id));
+assert.equal(allanaGhost.email, "", "Fantasma não deve inventar email");
+assert.deepEqual(allanaGhost.areaIds, [], "Fantasma sem área confirmada deve permanecer vazio");
+assert.equal(allanaGhost.roleConfirmed, false);
+
+const annaGhost = ghostEnabledState.members.find((m) => m.fullName === "Anna Clara Alves");
+assert.deepEqual(annaGhost?.areaIds, ["eletrico", "plantas"]);
+assert.equal(annaGhost?.roleConfirmed, true);
+
+const rebecaGhost = ghostEnabledState.members.find((m) => m.id === "ghost-rebeca");
+assert.equal(rebecaGhost?.role, "diretor");
+assert.deepEqual(rebecaGhost?.directorAreaIds, ["plantas", "integracao"]);
+
+const raisaGhost = ghostEnabledState.members.find((m) => m.id === "ghost-raisa");
+assert.equal(raisaGhost?.role, "diretor");
+assert.deepEqual(raisaGhost?.directorAreaIds, ["marketing", "financeiro", "gestao"]);
+
+assert.equal(
+  ghostEnabledState.tasks.find((t) => t.id === "t-wm")?.assigneeId,
+  "ghost-wemerson",
+  "W. Mateus deve vincular a Wemerson Mateus, não a Mateus Costa"
+);
+assert.equal(
+  ghostEnabledState.tasks.find((t) => t.id === "t-mat")?.assigneeId,
+  "ghost-mateus"
+);
+assert.equal(
+  ghostEnabledState.tasks.find((t) => t.id === "t-shell")?.assigneeId,
+  "ghost-richeldson",
+  "Shell deve vincular a Richeldson em Desempenho"
+);
+
+const wemersonDef = GHOST_TEAM_ROSTER.find((g) => g.id === "ghost-wemerson")!;
+const mateusDef = GHOST_TEAM_ROSTER.find((g) => g.id === "ghost-mateus")!;
+assert.equal(doesTaskCitationMatchGhost(baseOverlayState.tasks[0], wemersonDef), true);
+assert.equal(doesTaskCitationMatchGhost(baseOverlayState.tasks[0], mateusDef), false);
+assert.equal(doesTaskCitationMatchGhost(baseOverlayState.tasks[1], mateusDef), true);
+
+const allocatedState = applyGhostMembersOverlay(
+  { ...baseOverlayState, ghostAllocations: { "ghost-anna-clara": dev.id } },
+  true
+);
+assert.equal(
+  allocatedState.members.some((m) => m.id === "ghost-anna-clara"),
+  false,
+  "Fantasma alocado a membro real não deve aparecer duplicado como fantasma"
+);
+assert.equal(
+  getUnallocatedGhosts(baseOverlayState.members, { "ghost-anna-clara": dev.id }).some(
+    (g) => g.id === "ghost-anna-clara"
+  ),
+  false
+);
 
 console.log("All Zeus domain & RBAC tests passed!");

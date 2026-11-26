@@ -64,7 +64,8 @@ export function MemberProfileModal({
 
   if (!member) return null;
 
-  const canEdit = currentUser.id === member.id || isTopLeadership(currentUser.role);
+  const canEdit =
+    !member.isGhost && (currentUser.id === member.id || isTopLeadership(currentUser.role));
   const points = computeMemberPoints(member.id, state.tasks);
   const myTasks = state.tasks.filter((t) => t.assigneeId === member.id);
   const approvedTasks = myTasks.filter((t) => t.meetingApproved);
@@ -131,11 +132,22 @@ export function MemberProfileModal({
             <div className="min-w-0 space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-lg font-semibold tracking-tight">{member.fullName}</h2>
-                <RoleBadge role={member.role} />
+                {(!member.isGhost || member.roleConfirmed) && <RoleBadge role={member.role} />}
+                {member.isGhost && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/45 bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300">
+                    Fantasma · apenas demonstração
+                  </span>
+                )}
               </div>
               <div className="text-xs text-[var(--ink-subtle)]">
-                {member.email}
-                {member.course ? ` · ${member.course}` : ""}
+                {member.isGhost ? (
+                  <>Conta ainda não cadastrada — exibindo somente nome e vínculos confirmados</>
+                ) : (
+                  <>
+                    {member.email}
+                    {member.course ? ` · ${member.course}` : ""}
+                  </>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-0.5">
                 <span

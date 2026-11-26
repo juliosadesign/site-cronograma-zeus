@@ -9,6 +9,7 @@ import {
   computeDaysUntil,
   getAreaCardStyle,
   getAreaMeta,
+  parseFlexibleDateInput,
   ZEUS_AREAS,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
@@ -80,6 +81,7 @@ export function CalendarView() {
   const [cursor, setCursor] = useState({ year: 2026, month: 10 });
   const [selectedDate, setSelectedDate] = useState("2026-11-24");
   const [seasonScope, setSeasonScope] = useState<"season" | "all">("all");
+  const [jumpInput, setJumpInput] = useState("");
 
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
@@ -273,6 +275,7 @@ export function CalendarView() {
     <div className="space-y-5">
       {/* Competition Countdown Banner */}
       <div
+        data-tour="calendar-banner"
         className="zeus-card rounded-xl p-4 border-[1.5px] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
         style={buildTintedCardStyle("#f59e0b", { active: true, emphasis: "medium" })}
       >
@@ -434,6 +437,32 @@ export function CalendarView() {
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const parsed = parseFlexibleDateInput(jumpInput, cursor.year);
+                  if (parsed) {
+                    jumpToDate(parsed.startIso);
+                  }
+                }}
+                className="flex items-center gap-1"
+              >
+                <input
+                  type="text"
+                  value={jumpInput}
+                  onChange={(e) => setJumpInput(e.target.value)}
+                  placeholder="Ir para data (15/10/2026, out)"
+                  aria-label="Digitar data para navegar no calendário"
+                  className="h-7 w-44 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button
+                  type="submit"
+                  disabled={!parseFlexibleDateInput(jumpInput, cursor.year)}
+                  className="h-7 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] px-2 text-[11px] font-medium hover:border-blue-500/50 disabled:opacity-40"
+                >
+                  Ir
+                </button>
+              </form>
               <button
                 type="button"
                 onClick={() => jumpToDate(state.competitionDate)}

@@ -104,9 +104,9 @@ export const ZEUS_AREAS: Area[] = [
   },
   {
     id: "integracao",
-    name: "Integração",
+    name: "Integração (PCP)",
     shortCode: "INTG",
-    description: "CAD master, encaixes, peso e balanceamento.",
+    description: "PCP, CAD master, encaixes, peso e balanceamento.",
     category: "technical",
     colorHex: "#2dd4bf",
     chipClass: "border-teal-400/45 bg-teal-500/12 text-teal-700 dark:text-teal-300",
@@ -635,6 +635,178 @@ export function isDateInPeriod(dateIso: string, period: PeriodFilter): boolean {
   if (period === "h1") return month >= 1 && month <= 6;
   if (period === "q3") return month >= 7 && month <= 9;
   return month >= 10 && month <= 12;
+}
+
+export interface ParsedDateRange {
+  startIso: string;
+  endIso: string;
+  label: string;
+}
+
+const MONTH_NAMES_PT: Array<{ month: number; label: string; tokens: string[] }> = [
+  { month: 1, label: "Jan", tokens: ["janeiro", "jan"] },
+  { month: 2, label: "Fev", tokens: ["fevereiro", "fev"] },
+  { month: 3, label: "Mar", tokens: ["marco", "março", "mar"] },
+  { month: 4, label: "Abr", tokens: ["abril", "abr"] },
+  { month: 5, label: "Mai", tokens: ["maio", "mai"] },
+  { month: 6, label: "Jun", tokens: ["junho", "jun"] },
+  { month: 7, label: "Jul", tokens: ["julho", "jul"] },
+  { month: 8, label: "Ago", tokens: ["agosto", "ago"] },
+  { month: 9, label: "Set", tokens: ["setembro", "set"] },
+  { month: 10, label: "Out", tokens: ["outubro", "out"] },
+  { month: 11, label: "Nov", tokens: ["novembro", "nov"] },
+  { month: 12, label: "Dez", tokens: ["dezembro", "dez"] },
+];
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function buildValidDay(year: number, month: number, day: number): ParsedDateRange | null {
+  if (year < 2000 || year > 2100 || month < 1 || month > 12) return null;
+  const maxDay = daysInMonth(year, month);
+  if (day < 1 || day > maxDay) return null;
+  const iso = `${year}-${pad2(month)}-${pad2(day)}`;
+  return {
+    startIso: iso,
+    endIso: iso,
+    label: `${pad2(day)}/${pad2(month)}/${year}`,
+  };
+}
+
+function buildValidMonth(year: number, month: number): ParsedDateRange | null {
+  if (year < 2000 || year > 2100 || month < 1 || month > 12) return null;
+  const maxDay = daysInMonth(year, month);
+  const monthMeta = MONTH_NAMES_PT[month - 1];
+  return {
+    startIso: `${year}-${pad2(month)}-01`,
+    endIso: `${year}-${pad2(month)}-${pad2(maxDay)}`,
+    label: `${monthMeta?.label ?? pad2(month)}/${year}`,
+  };
+}
+
+function normalizeYearToken(rawYear: string): number {
+  const n = Number(rawYear);
+  if (rawYear.length === 2) return 2000 + n;
+  return n;
+}
+
+/** Formats YYYY-MM-DD (or ISO timestamp) to DD/MM/YYYY for UI display. */
+export function formatIsoToBr(iso?: string | null): string {
+  if (!iso) return "";
+  const m = iso.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+/**
+ * Parses flexible typed dates in Portuguese or ISO formats:
+ * - DD/MM/YYYY, DD-MM-YYYY, DD/MM, YYYY-MM-DD (single day)
+ * - MM/YYYY, MM/YY, YYYY-MM, "março", "mar 2026", "abril/26" (full month)
+ * - YYYY (full year)
+ */
+export function parseFlexibleDateInput(raw: string, defaultYear = 2026): ParsedDateRange | null {
+  const cleaned = raw.trim();
+  if (!cleaned) return null;
+
+  const normalized = cleaned
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (normalized === "hoje") {
+    const now = new Date();
+    return buildValidDay(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  }
+
+  // ISO day: YYYY-MM-DD or YYYY/MM/DD
+  let match = normalized.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (match) {
+    return buildValidDay(Number(match[1]), Number(match[2]), Number(match[3]));
+  }
+
+  // BR day: DD/MM/YYYY or DD-MM-YYYY or DD/MM/YY
+  match = normalized.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2}|\d{4})$/);
+  if (match) {
+    return buildValidDay(normalizeYearToken(match[3]), Number(match[2]), Number(match[1]));
+  }
+
+  // Short BR day/month: DD/MM or DD-MM
+  match = normalized.match(/^(\d{1,2})[-/](\d{1,2})$/);
+  if (match) {
+    const first = Number(match[1]);
+    const second = Number(match[2]);
+    // Heuristic: if second >= 24 and first <= 12, treat as MM/YY (e.g. 04/26 -> abril/2026)
+    if (second >= 24 && second <= 99 && first >= 1 && first <= 12) {
+      return buildValidMonth(2000 + second, first);
+    }
+    return buildValidDay(defaultYear, second, first);
+  }
+
+  // ISO month: YYYY-MM or YYYY/MM
+  match = normalized.match(/^(\d{4})[-/](\d{1,2})$/);
+  if (match) {
+    return buildValidMonth(Number(match[1]), Number(match[2]));
+  }
+
+  // Numeric MM/YYYY or MM-YYYY
+  match = normalized.match(/^(\d{1,2})[-/](\d{4})$/);
+  if (match) {
+    return buildValidMonth(Number(match[2]), Number(match[1]));
+  }
+
+  // Year only: YYYY
+  match = normalized.match(/^(\d{4})$/);
+  if (match) {
+    const y = Number(match[1]);
+    if (y >= 2000 && y <= 2100) {
+      return { startIso: `${y}-01-01`, endIso: `${y}-12-31`, label: String(y) };
+    }
+    return null;
+  }
+
+  // Portuguese month names: "marco", "mar 2026", "marco de 2026", "abr/26"
+  const monthText = normalized.replace(/\s+de\s+/g, " ").replace(/[-/]/g, " ");
+  const parts = monthText.split(/\s+/).filter(Boolean);
+  if (parts.length >= 1 && parts.length <= 2) {
+    const monthEntry = MONTH_NAMES_PT.find((item) => item.tokens.includes(parts[0]));
+    if (monthEntry) {
+      if (parts.length === 1) {
+        return buildValidMonth(defaultYear, monthEntry.month);
+      }
+      if (/^(\d{2}|\d{4})$/.test(parts[1])) {
+        return buildValidMonth(normalizeYearToken(parts[1]), monthEntry.month);
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Checks if an item [itemStart, itemEnd] overlaps [filterStart, filterEnd] using ISO YYYY-MM-DD strings. */
+export function doesDateRangeOverlap(
+  itemStart?: string | null,
+  itemEnd?: string | null,
+  filterStart?: string | null,
+  filterEnd?: string | null
+): boolean {
+  const fStart = filterStart ? filterStart.slice(0, 10) : "";
+  const fEnd = filterEnd ? filterEnd.slice(0, 10) : "";
+  if (!fStart && !fEnd) return true;
+
+  const rawStart = itemStart ? itemStart.slice(0, 10) : "";
+  const rawEnd = itemEnd ? itemEnd.slice(0, 10) : "";
+  const iStart = rawStart || rawEnd;
+  const iEnd = rawEnd || rawStart;
+
+  if (!iStart || !iEnd) return false;
+  if (fStart && iEnd < fStart) return false;
+  if (fEnd && iStart > fEnd) return false;
+  return true;
 }
 
 export function computeFlightReadiness(items: FlightChecklistItem[]): {

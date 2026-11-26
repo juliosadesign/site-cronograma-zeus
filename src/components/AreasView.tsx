@@ -10,6 +10,7 @@ import {
   Lock,
   Plus,
   Save,
+  Sparkles,
   Square,
   Trash2,
 } from "lucide-react";
@@ -22,13 +23,13 @@ import {
   CORPORATE_AREAS,
   getAreaCardStyle,
   getAreaMeta,
-  getAreaName,
   getReportOverride,
   TECHNICAL_AREAS,
   ZEUS_AREAS,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
 import type { NavTab } from "./AppShell";
+import { AreaFeatureRequestsPanel } from "./AreaFeatureRequestsPanel";
 import { AreaChip, RoleBadge } from "./Badge";
 import { GaugeRing } from "./Charts";
 import { MemberAvatar } from "./MemberAvatar";
@@ -56,6 +57,7 @@ export function AreasView({
     currentUser.areaIds.find((id) => TECHNICAL_AREAS.some((t) => t.id === id)) ??
     TECHNICAL_AREAS[0].id;
   const [selectedAreaId, setSelectedAreaId] = useState(defaultTech);
+  const [areaTab, setAreaTab] = useState<"overview" | "director_requests">("overview");
   const [sectionTitle, setSectionTitle] = useState("");
   const [sectionImpacted, setSectionImpacted] = useState<string[]>([]);
 
@@ -114,6 +116,9 @@ export function AreasView({
   const canEditArea = canManageArea(currentUser, area.id);
   const canSeePrivate = canViewPrivateArea(currentUser, area.id);
   const areaNotes = state.areaNotes.filter((n) => n.areaId === area.id);
+  const pendingRequestsCount = state.areaFeatureRequests.filter(
+    (r) => r.areaId === area.id && r.status !== "entregue"
+  ).length;
 
   const handleAddSection = (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,7 +218,7 @@ export function AreasView({
       )}
 
       {/* 8 Technical Areas Grid Selector */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      <div data-tour="areas-grid" className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         {TECHNICAL_AREAS.map((a) => {
           const active = a.id === area.id;
           const aOverride = getReportOverride(state.reportOverrides, state.activeSeason, a.id);
@@ -257,7 +262,42 @@ export function AreasView({
         })}
       </div>
 
-      {/* Selected Area Detail */}
+      {/* Area Sub-Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--hairline)] pb-2">
+        <button
+          type="button"
+          onClick={() => setAreaTab("overview")}
+          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+            areaTab === "overview"
+              ? "border-blue-500/60 bg-blue-600/20 text-sky-300"
+              : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+          }`}
+        >
+          Relatório & Espaço Privado ({area.shortCode})
+        </button>
+        <button
+          type="button"
+          onClick={() => setAreaTab("director_requests")}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+            areaTab === "director_requests"
+              ? "border-amber-500/60 bg-amber-500/20 text-amber-300"
+              : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+          }`}
+        >
+          <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+          Pedidos do Diretor (Próx. Atualização)
+          {pendingRequestsCount > 0 && (
+            <span className="rounded-full bg-amber-500/25 border border-amber-500/50 px-1.5 font-mono text-[10px] text-amber-200">
+              {pendingRequestsCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {areaTab === "director_requests" ? (
+        <AreaFeatureRequestsPanel areaId={area.id} />
+      ) : (
+      /* Selected Area Detail */
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section
           className="zeus-card rounded-xl p-4 space-y-4 border-[1.5px]"
@@ -461,7 +501,7 @@ export function AreasView({
                 >
                   <MemberAvatar member={m} size="sm" />
                   <span>{m.fullName}</span>
-                  <RoleBadge role={m.role} />
+                  {(!m.isGhost || m.roleConfirmed) && <RoleBadge role={m.role} />}
                 </button>
               ))}
             </div>
@@ -646,6 +686,7 @@ export function AreasView({
           )}
         </section>
       </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,15 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { User } from "@supabase/supabase-js";
 import {
   canAccessFinance,
@@ -16,6 +25,13 @@ import {
   isTopLeadership,
 } from "./domain";
 import { INITIAL_ZEUS_STATE } from "./seed";
+import {
+  applyGhostMembersOverlay,
+  buildMembershipsForGhost,
+  doesTaskCitationMatchGhost,
+  GHOST_TEAM_ROSTER,
+  isGhostMemberId,
+} from "./ghost-members";
 import { isSupabaseConfigured, supabase } from "./supabase";
 import type {
   AircraftConcept,
@@ -26,6 +42,8 @@ import type {
   AreaRole,
   AttendanceStatus,
   CalendarCategory,
+  FeatureRequestPriority,
+  FeatureRequestStatus,
   FinancialKind,
   FinancialStatus,
   FlightCategory,
@@ -45,6 +63,26 @@ import type {
 } from "./types";
 
 const STORAGE_KEY = "zeus_aero_v3_state";
+const GHOST_MODE_KEY = "zeus_ghost_members_v1";
+const GHOST_MODE_EVENT = "zeus-ghost-mode-change";
+
+function subscribeGhostMode(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("storage", callback);
+  window.addEventListener(GHOST_MODE_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(GHOST_MODE_EVENT, callback);
+  };
+}
+
+function getGhostModeSnapshot(): boolean {
+  try {
+    return typeof window !== "undefined" && localStorage.getItem(GHOST_MODE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 export interface ToastMessage {
   id: number;
@@ -55,6 +93,9 @@ export interface ToastMessage {
 interface ZeusContextValue {
   state: ZeusState;
   currentUser: Member;
+  ghostMembersEnabled: boolean;
+  setGhostMembersEnabled: (enabled: boolean) => void;
+  toggleGhostMembers: () => void;
   authLoading: boolean;
   sessionUser: User | null;
   needsOnboarding: boolean;
@@ -133,7 +174,7 @@ interface ZeusContextValue {
   deleteTask: (taskId: string) => void;
   addTaskComment: (taskId: string, body: string, kind?: TaskCommentKind) => void;
   deleteTaskComment: (commentId: string) => void;
-  createSprint: (input: { name: string; startDate: string; endDate: string }) => void;
+  createSprint: (input: { name: string; startDate: string; endDate: string }) => string | null;
   updateSprint: (sprintId: string, patch: { name?: string; startDate?: string; endDate?: string }) => void;
   deleteSprint: (sprintId: string) => void;
   toggleReportSection: (sectionId: string) => void;
@@ -267,6 +308,25 @@ interface ZeusContextValue {
     role: Role;
     areaMemberships: AreaMembership[];
   }) => void;
+  addAreaFeatureRequest: (input: {
+    areaId: string;
+    title: string;
+    details: string;
+    priority: FeatureRequestPriority;
+  }) => void;
+  updateAreaFeatureRequest: (
+    requestId: string,
+    patch: {
+      title?: string;
+      details?: string;
+      priority?: FeatureRequestPriority;
+      status?: FeatureRequestStatus;
+      devNotes?: string;
+    }
+  ) => void;
+  deleteAreaFeatureRequest: (requestId: string) => void;
+  allocateGhostToMember: (ghostId: string, memberId: string) => void;
+  unallocateGhost: (ghostId: string) => void;
 }
 
 const ZeusContext = createContext<ZeusContextValue | null>(null);
@@ -295,6 +355,8 @@ function emptyRemoteState(uid: string): ZeusState {
     meetings: [],
     attendance: [],
     areaNotes: [],
+    areaFeatureRequests: [],
+    ghostAllocations: {},
     announcements: [],
     archiveDocuments: [],
     flightChecklist: [],
@@ -366,6 +428,8 @@ function hydrateState(parsed: Partial<ZeusState>): ZeusState {
     marketingCampaigns: parsed.marketingCampaigns ?? INITIAL_ZEUS_STATE.marketingCampaigns,
     teamOKRs: parsed.teamOKRs ?? INITIAL_ZEUS_STATE.teamOKRs,
     aircraftRevisions: parsed.aircraftRevisions ?? INITIAL_ZEUS_STATE.aircraftRevisions,
+    areaFeatureRequests: parsed.areaFeatureRequests ?? INITIAL_ZEUS_STATE.areaFeatureRequests,
+    ghostAllocations: parsed.ghostAllocations ?? INITIAL_ZEUS_STATE.ghostAllocations,
   };
 }
 
@@ -393,6 +457,12 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const ghostMembersEnabled = useSyncExternalStore(
+    subscribeGhostMode,
+    getGhostModeSnapshot,
+    () => false
+  );
+  const [ghostTaskAssignees, setGhostTaskAssignees] = useState<Record<string, string>>({});
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((type: ToastMessage["type"], message: string) => {
@@ -405,6 +475,28 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
     setToast(null);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   }, []);
+
+  const setGhostMembersEnabled = useCallback((enabled: boolean) => {
+    try {
+      localStorage.setItem(GHOST_MODE_KEY, enabled ? "true" : "false");
+    } catch {
+      // ignore storage access issues
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(GHOST_MODE_EVENT));
+    }
+  }, []);
+
+  const toggleGhostMembers = useCallback(() => {
+    const next = !ghostMembersEnabled;
+    setGhostMembersEnabled(next);
+    showToast(
+      "info",
+      next
+        ? "Modo apresentação ativado: membros fantasmas visíveis apenas neste navegador."
+        : "Modo apresentação desativado: exibindo somente contas reais cadastradas."
+    );
+  }, [ghostMembersEnabled, setGhostMembersEnabled, showToast]);
 
   const loadRemoteState = useCallback(async (user: User | null, silent = false) => {
     if (!supabase || !user) {
@@ -518,6 +610,8 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         mktRes,
         okrsRes,
         revsRes,
+        featureReqsRes,
+        ghostAllocRes,
         notifySettingsRes,
       ] = await Promise.all([
         supabase.from("profiles").select("*").order("created_at", { ascending: true }),
@@ -543,6 +637,8 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         supabase.from("marketing_campaigns").select("*").order("created_at", { ascending: false }),
         supabase.from("team_okrs").select("*").order("created_at", { ascending: false }),
         supabase.from("aircraft_revisions").select("*").order("created_at", { ascending: false }),
+        supabase.from("area_feature_requests").select("*").order("created_at", { ascending: false }),
+        supabase.from("ghost_allocations").select("*"),
         topLeader
           ? supabase.from("team_notification_settings").select("*").eq("id", 1).maybeSingle()
           : Promise.resolve({ data: null }),
@@ -776,6 +872,21 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
           createdBy: rev.created_by ? String(rev.created_by) : undefined,
           createdAt: String(rev.created_at).slice(0, 10),
         })),
+        areaFeatureRequests: (featureReqsRes.data ?? []).map((fr) => ({
+          id: String(fr.id),
+          areaId: String(fr.area_id),
+          authorId: String(fr.author_id),
+          title: String(fr.title),
+          details: String(fr.details ?? ""),
+          priority: (fr.priority ?? "media") as FeatureRequestPriority,
+          status: (fr.status ?? "pendente") as FeatureRequestStatus,
+          devNotes: String(fr.dev_notes ?? ""),
+          createdAt: String(fr.created_at).slice(0, 10),
+          updatedAt: String(fr.updated_at).slice(0, 10),
+        })),
+        ghostAllocations: Object.fromEntries(
+          (ghostAllocRes.data ?? []).map((ga) => [String(ga.ghost_id), String(ga.profile_id)])
+        ),
       }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro ao carregar dados do Supabase";
@@ -863,6 +974,21 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
     [state.members, state.currentUserId]
   );
 
+  const effectiveState = useMemo(() => {
+    const overlaid = applyGhostMembersOverlay(state, ghostMembersEnabled);
+    if (!ghostMembersEnabled || Object.keys(ghostTaskAssignees).length === 0) {
+      return overlaid;
+    }
+    return {
+      ...overlaid,
+      tasks: overlaid.tasks.map((task) =>
+        ghostTaskAssignees[task.id]
+          ? { ...task, assigneeId: ghostTaskAssignees[task.id] }
+          : task
+      ),
+    };
+  }, [state, ghostMembersEnabled, ghostTaskAssignees]);
+
   const runRemote = useCallback(
     async (
       op: () => PromiseLike<{ error: { message: string } | null }>,
@@ -945,8 +1071,11 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ZeusContextValue>(
     () => ({
-      state,
+      state: effectiveState,
       currentUser,
+      ghostMembersEnabled,
+      setGhostMembersEnabled,
+      toggleGhostMembers,
       authLoading,
       sessionUser,
       needsOnboarding,
@@ -1018,6 +1147,10 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         }
       },
       updateMemberLabSlots: (memberId, labSlots) => {
+        if (isGhostMemberId(memberId)) {
+          showToast("info", "Membro fantasma é apenas para apresentação visual.");
+          return;
+        }
         if (currentUser.id !== memberId && !isTopLeadership(currentUser.role)) return;
         setState((s) => ({
           ...s,
@@ -1083,6 +1216,10 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
           override
         ),
       updateMemberProfile: (memberId, patch) => {
+        if (isGhostMemberId(memberId)) {
+          showToast("info", "Membro fantasma é apenas para apresentação visual.");
+          return;
+        }
         if (currentUser.id !== memberId && !isTopLeadership(currentUser.role)) return;
         setState((s) => ({
           ...s,
@@ -1302,12 +1439,20 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
       createTask: (input) => {
         if (!canManageArea(currentUser, input.areaId)) return;
         const id = newId("t");
+        const isGhostAssignee = isGhostMemberId(input.assigneeId);
+        const persistedAssigneeId = !input.assigneeId || isGhostAssignee ? "" : input.assigneeId;
+
+        if (isGhostAssignee && input.assigneeId) {
+          setGhostTaskAssignees((prev) => ({ ...prev, [id]: input.assigneeId }));
+        }
+
         setState((s) => ({
           ...s,
           tasks: [
             {
               id,
               ...input,
+              assigneeId: persistedAssigneeId,
               createdBy: currentUser.id,
               status: "red",
               directorValidated: false,
@@ -1330,7 +1475,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
               id,
               sprint_id: input.sprintId,
               area_id: input.areaId,
-              assignee_id: input.assigneeId,
+              assignee_id: persistedAssigneeId || null,
               created_by: currentUser.id,
               title: input.title,
               description: input.description,
@@ -1347,9 +1492,27 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
       updateTask: (taskId, patch) => {
         const target = state.tasks.find((t) => t.id === taskId);
         if (!target || !canManageArea(currentUser, target.areaId)) return;
+        const patchHasAssignee = patch.assigneeId !== undefined;
+        const isGhostAssignee = patchHasAssignee && isGhostMemberId(patch.assigneeId);
+
+        if (patchHasAssignee) {
+          setGhostTaskAssignees((prev) => {
+            if (isGhostAssignee && patch.assigneeId) {
+              return { ...prev, [taskId]: patch.assigneeId };
+            }
+            if (!(taskId in prev)) return prev;
+            const next = { ...prev };
+            delete next[taskId];
+            return next;
+          });
+        }
+
+        const sanitizedStatePatch =
+          patchHasAssignee && isGhostAssignee ? { ...patch, assigneeId: target.assigneeId } : patch;
+
         setState((s) => ({
           ...s,
-          tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
+          tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, ...sanitizedStatePatch } : t)),
         }));
         if (patch.blockedByAreaId && patch.blockedByAreaId !== target.blockedByAreaId) {
           dispatchAutoNotification(
@@ -1363,15 +1526,22 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
           if (patch.title !== undefined) dbPatch.title = patch.title;
           if (patch.description !== undefined) dbPatch.description = patch.description;
           if (patch.priority !== undefined) dbPatch.priority = patch.priority;
-          if (patch.assigneeId !== undefined) dbPatch.assignee_id = patch.assigneeId;
+          if (patch.assigneeId !== undefined) {
+            dbPatch.assignee_id =
+              !patch.assigneeId || isGhostAssignee ? null : patch.assigneeId;
+          }
           if (patch.externalUrl !== undefined) dbPatch.external_url = patch.externalUrl || null;
           if (patch.impactedAreaIds !== undefined) dbPatch.impacted_area_ids = patch.impactedAreaIds;
           if (patch.blockedByAreaId !== undefined) dbPatch.blocked_by_area_id = patch.blockedByAreaId || null;
           if (patch.blockedReason !== undefined) dbPatch.blocked_reason = patch.blockedReason;
-          void runRemote(
-            () => supabase!.from("sprint_tasks").update(dbPatch).eq("id", taskId),
-            "Tarefa atualizada."
-          );
+          if (Object.keys(dbPatch).length > 0) {
+            void runRemote(
+              () => supabase!.from("sprint_tasks").update(dbPatch).eq("id", taskId),
+              "Tarefa atualizada."
+            );
+          } else if (isGhostAssignee) {
+            showToast("success", "Responsável fantasma vinculado na visualização local.");
+          }
         }
       },
       deleteTask: (taskId) => {
@@ -1421,7 +1591,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         }
       },
       createSprint: (input) => {
-        if (!canApproveInMeeting(currentUser)) return;
+        if (!canApproveInMeeting(currentUser)) return null;
         const id = newId("sp");
         const seasonYear = state.activeSeason;
         setState((s) => ({
@@ -1452,6 +1622,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
             );
           })();
         }
+        return id;
       },
       updateSprint: (sprintId, patch) => {
         if (!canApproveInMeeting(currentUser)) return;
@@ -1671,6 +1842,10 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         }
       },
       setAttendance: (meetingId, memberId, status) => {
+        if (isGhostMemberId(memberId)) {
+          showToast("info", "Presença de membro fantasma não é gravada no banco de dados.");
+          return;
+        }
         const meeting = state.meetings.find((m) => m.id === meetingId);
         if (!meeting) return;
         const allowed =
@@ -2244,6 +2419,10 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         }));
       },
       reviewMemberAccount: (input) => {
+        if (isGhostMemberId(input.memberId)) {
+          showToast("info", "Membro fantasma é apenas para visualização/apresentação.");
+          return;
+        }
         if (!canApproveAccounts(currentUser)) return;
         const nextStatus = input.approved ? "approved" : "rejected";
         const memberships: AreaMembership[] = input.areaMemberships.length
@@ -2295,10 +2474,242 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
           showToast("success", "Permissões do membro atualizadas.");
         }
       },
+      addAreaFeatureRequest: (input) => {
+        if (!canManageArea(currentUser, input.areaId)) return;
+        const id = newId("req");
+        const today = new Date().toISOString().slice(0, 10);
+        const created = {
+          id,
+          areaId: input.areaId,
+          authorId: currentUser.id,
+          title: input.title,
+          details: input.details,
+          priority: input.priority,
+          status: "pendente" as FeatureRequestStatus,
+          devNotes: "",
+          createdAt: today,
+          updatedAt: today,
+        };
+        setState((s) => ({
+          ...s,
+          areaFeatureRequests: [created, ...s.areaFeatureRequests],
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(
+            () =>
+              supabase!.from("area_feature_requests").insert({
+                id,
+                area_id: input.areaId,
+                author_id: currentUser.id,
+                title: input.title,
+                details: input.details,
+                priority: input.priority,
+                status: "pendente",
+                dev_notes: "",
+              }),
+            "Pedido registrado para a próxima atualização."
+          );
+        } else {
+          showToast("success", "Pedido registrado para a próxima atualização.");
+        }
+      },
+      updateAreaFeatureRequest: (requestId, patch) => {
+        const target = state.areaFeatureRequests.find((r) => r.id === requestId);
+        if (!target || !canManageArea(currentUser, target.areaId)) return;
+        const canTriage = isTopLeadership(currentUser.role);
+        const sanitizedPatch = {
+          ...(patch.title !== undefined ? { title: patch.title } : {}),
+          ...(patch.details !== undefined ? { details: patch.details } : {}),
+          ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+          ...(canTriage && patch.status !== undefined ? { status: patch.status } : {}),
+          ...(canTriage && patch.devNotes !== undefined ? { devNotes: patch.devNotes } : {}),
+          updatedAt: new Date().toISOString().slice(0, 10),
+        };
+        setState((s) => ({
+          ...s,
+          areaFeatureRequests: s.areaFeatureRequests.map((r) =>
+            r.id === requestId ? { ...r, ...sanitizedPatch } : r
+          ),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          const dbPatch: Record<string, unknown> = {
+            updated_at: new Date().toISOString(),
+          };
+          if (sanitizedPatch.title !== undefined) dbPatch.title = sanitizedPatch.title;
+          if (sanitizedPatch.details !== undefined) dbPatch.details = sanitizedPatch.details;
+          if (sanitizedPatch.priority !== undefined) dbPatch.priority = sanitizedPatch.priority;
+          if (sanitizedPatch.status !== undefined) dbPatch.status = sanitizedPatch.status;
+          if (sanitizedPatch.devNotes !== undefined) dbPatch.dev_notes = sanitizedPatch.devNotes;
+          void runRemote(
+            () => supabase!.from("area_feature_requests").update(dbPatch).eq("id", requestId),
+            "Pedido atualizado."
+          );
+        }
+      },
+      deleteAreaFeatureRequest: (requestId) => {
+        const target = state.areaFeatureRequests.find((r) => r.id === requestId);
+        if (!target) return;
+        if (target.authorId !== currentUser.id && !isTopLeadership(currentUser.role)) return;
+        setState((s) => ({
+          ...s,
+          areaFeatureRequests: s.areaFeatureRequests.filter((r) => r.id !== requestId),
+        }));
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(
+            () => supabase!.from("area_feature_requests").delete().eq("id", requestId),
+            "Pedido removido."
+          );
+        }
+      },
+      allocateGhostToMember: (ghostId, memberId) => {
+        if (!canApproveAccounts(currentUser) || isGhostMemberId(memberId)) return;
+        const ghost = GHOST_TEAM_ROSTER.find((g) => g.id === ghostId);
+        const target = state.members.find((m) => m.id === memberId && !m.isGhost);
+        if (!ghost || !target) return;
+
+        // Merge ghost confirmed memberships without downgrading existing director roles
+        const mergedMap = new Map<string, AreaRole>();
+        for (const existing of target.areaMemberships ?? []) {
+          mergedMap.set(existing.areaId, existing.role);
+        }
+        if (mergedMap.size === 0) {
+          for (const areaId of target.areaIds) {
+            mergedMap.set(
+              areaId,
+              target.directorAreaIds.includes(areaId) ? "diretor" : "efetivado"
+            );
+          }
+        }
+        for (const gm of buildMembershipsForGhost(ghost)) {
+          const prevRole = mergedMap.get(gm.areaId);
+          if (prevRole === "diretor" || gm.role === "diretor") {
+            mergedMap.set(gm.areaId, "diretor");
+          } else if (!prevRole || prevRole === "calouro") {
+            mergedMap.set(gm.areaId, gm.role);
+          }
+        }
+
+        const mergedMemberships: AreaMembership[] = Array.from(mergedMap.entries()).map(
+          ([areaId, role]) => ({ areaId, role })
+        );
+        const mergedAreaIds = mergedMemberships.map((m) => m.areaId);
+        const mergedDirectorIds = mergedMemberships
+          .filter((m) => m.role === "diretor")
+          .map((m) => m.areaId);
+
+        const nextRole: Role = isTopLeadership(target.role)
+          ? target.role
+          : mergedDirectorIds.length > 0
+          ? "diretor"
+          : target.role === "calouro" && ghost.roleConfirmed
+          ? "efetivado"
+          : target.role;
+
+        const matchedTaskIds = state.tasks
+          .filter(
+            (t) =>
+              (!t.assigneeId || isGhostMemberId(t.assigneeId)) &&
+              doesTaskCitationMatchGhost(t, ghost)
+          )
+          .map((t) => t.id);
+        const matchedTaskSet = new Set(matchedTaskIds);
+
+        setGhostTaskAssignees((prev) => {
+          if (matchedTaskIds.length === 0) return prev;
+          const next = { ...prev };
+          for (const tid of matchedTaskIds) delete next[tid];
+          return next;
+        });
+
+        setState((s) => ({
+          ...s,
+          members: s.members.map((m) =>
+            m.id === memberId
+              ? {
+                  ...m,
+                  accountStatus: "approved",
+                  role: nextRole,
+                  areaIds: mergedAreaIds,
+                  directorAreaIds: mergedDirectorIds,
+                  areaMemberships: mergedMemberships,
+                }
+              : m
+          ),
+          ghostAllocations: { ...s.ghostAllocations, [ghostId]: memberId },
+          tasks: s.tasks.map((t) =>
+            matchedTaskSet.has(t.id) ? { ...t, assigneeId: memberId } : t
+          ),
+        }));
+
+        if (isSupabaseConfigured && supabase) {
+          void (async () => {
+            await runRemote(() =>
+              supabase!
+                .from("profiles")
+                .update({ account_status: "approved", role: nextRole })
+                .eq("id", memberId)
+            );
+            await supabase!.from("profile_areas").delete().eq("profile_id", memberId);
+            if (mergedMemberships.length > 0) {
+              await runRemote(() =>
+                supabase!.from("profile_areas").insert(
+                  mergedMemberships.map((m) => ({
+                    profile_id: memberId,
+                    area_id: m.areaId,
+                    area_role: m.role,
+                    is_director: m.role === "diretor",
+                  }))
+                )
+              );
+            }
+            if (matchedTaskIds.length > 0) {
+              await runRemote(() =>
+                supabase!
+                  .from("sprint_tasks")
+                  .update({ assignee_id: memberId })
+                  .in("id", matchedTaskIds)
+              );
+            }
+            await runRemote(
+              () =>
+                supabase!.from("ghost_allocations").upsert({
+                  ghost_id: ghostId,
+                  profile_id: memberId,
+                  allocated_by: currentUser.id,
+                  allocated_at: new Date().toISOString(),
+                }),
+              `Perfil "${ghost.fullName}" alocado para ${target.fullName} (${matchedTaskIds.length} tarefas vinculadas).`
+            );
+          })();
+        } else {
+          showToast(
+            "success",
+            `Perfil "${ghost.fullName}" alocado para ${target.fullName} (${matchedTaskIds.length} tarefas vinculadas).`
+          );
+        }
+      },
+      unallocateGhost: (ghostId) => {
+        if (!canApproveAccounts(currentUser)) return;
+        setState((s) => {
+          const next = { ...s.ghostAllocations };
+          delete next[ghostId];
+          return { ...s, ghostAllocations: next };
+        });
+        if (isSupabaseConfigured && supabase) {
+          void runRemote(
+            () => supabase!.from("ghost_allocations").delete().eq("ghost_id", ghostId),
+            "Vínculo de fantasma removido."
+          );
+        }
+      },
     }),
     [
+      effectiveState,
       state,
       currentUser,
+      ghostMembersEnabled,
+      setGhostMembersEnabled,
+      toggleGhostMembers,
       authLoading,
       sessionUser,
       needsOnboarding,

@@ -27,11 +27,14 @@ import {
   computeFlightReadiness,
   computeTeamReportPercentage,
   CORPORATE_AREAS,
+  doesDateRangeOverlap,
   evaluateScheduleHealth,
+  formatIsoToBr,
   getAreaCardStyle,
   getAreaMeta,
   getMemberLabStatus,
   isDateInPeriod,
+  parseFlexibleDateInput,
   TECHNICAL_AREAS,
   ZEUS_AREAS,
 } from "@/lib/domain";
@@ -64,6 +67,8 @@ export function DashboardView({
   const [content, setContent] = useState("");
   const [pinned, setPinned] = useState(true);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
+  const [dateFromRaw, setDateFromRaw] = useState("");
+  const [dateToRaw, setDateToRaw] = useState("");
 
   const [nowInfo, setNowInfo] = useState<{ iso: string; dayOfWeek: number; minutes: number } | null>(null);
   useEffect(() => {
@@ -75,8 +80,38 @@ export function DashboardView({
     });
   }, []);
 
+  const parsedFrom = parseFlexibleDateInput(dateFromRaw, state.activeSeason);
+  const parsedTo = parseFlexibleDateInput(dateToRaw, state.activeSeason);
+  const customDateBounds = (() => {
+    if (!parsedFrom && !parsedTo) return null;
+    if (parsedFrom && parsedTo) {
+      return parsedFrom.startIso <= parsedTo.endIso
+        ? { startIso: parsedFrom.startIso, endIso: parsedTo.endIso }
+        : { startIso: parsedTo.startIso, endIso: parsedFrom.endIso };
+    }
+    if (parsedFrom) {
+      return { startIso: parsedFrom.startIso, endIso: parsedFrom.endIso };
+    }
+    if (parsedTo) {
+      return { startIso: "", endIso: parsedTo.endIso };
+    }
+    return null;
+  })();
+
+  const matchesTimeFilter = (startIso: string, endIso?: string) => {
+    if (customDateBounds) {
+      return doesDateRangeOverlap(
+        startIso,
+        endIso ?? startIso,
+        customDateBounds.startIso,
+        customDateBounds.endIso
+      );
+    }
+    return isDateInPeriod(startIso, periodFilter);
+  };
+
   const seasonSprints = state.sprints.filter(
-    (s) => s.seasonYear === state.activeSeason && isDateInPeriod(s.startDate, periodFilter)
+    (s) => s.seasonYear === state.activeSeason && matchesTimeFilter(s.startDate, s.endDate)
   );
   const fallbackSeasonSprints = state.sprints.filter((s) => s.seasonYear === state.activeSeason);
   const activeSprint =
@@ -100,13 +135,13 @@ export function DashboardView({
     (r) => r.seasonYear === state.activeSeason
   );
   const seasonMeetings = state.meetings.filter(
-    (m) => m.seasonYear === state.activeSeason && isDateInPeriod(m.date, periodFilter)
+    (m) => m.seasonYear === state.activeSeason && matchesTimeFilter(m.date)
   );
   const seasonMeetingIds = new Set(seasonMeetings.map((m) => m.id));
   const seasonAttendance = state.attendance.filter((a) => seasonMeetingIds.has(a.meetingId));
 
   const seasonAnnouncements = state.announcements.filter(
-    (a) => a.seasonYear === state.activeSeason && isDateInPeriod(a.createdAt, periodFilter)
+    (a) => a.seasonYear === state.activeSeason && matchesTimeFilter(a.createdAt)
   );
 
   // Compute SAE Technical Report % strictly over the 8 Technical Areas (Corporate stays separated)
@@ -246,33 +281,77 @@ export function DashboardView({
       </div>
 
       {/* Period Filter Bar */}
-      <div className="zeus-card rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-xs text-[var(--ink-subtle)]">
+      <div className="zeus-card rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--ink-subtle)]">
           <Filter className="h-3.5 w-3.5 text-blue-400" />
           <span>Recorte temporal ({state.activeSeason}):</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: "all", label: "Mostrar tudo" },
+                { id: "q1", label: "Jan–Mar" },
+                { id: "h1", label: "Até Junho" },
+                { id: "q3", label: "Jul–Set" },
+                { id: "q4", label: "Out–Dez" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  setPeriodFilter(opt.id);
+                  setDateFromRaw("");
+                  setDateToRaw("");
+                }}
+                className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  !customDateBounds && periodFilter === opt.id
+                    ? "border-blue-500/70 bg-blue-600/20 text-blue-300"
+                    : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
+
         <div className="flex flex-wrap items-center gap-1.5">
-          {(
-            [
-              { id: "all", label: "Ano todo" },
-              { id: "q1", label: "Jan–Mar" },
-              { id: "h1", label: "Até Junho (Jan–Jun)" },
-              { id: "q3", label: "Jul–Set" },
-              { id: "q4", label: "Out–Dez" },
-            ] as const
-          ).map((opt) => (
+          <input
+            type="text"
+            value={dateFromRaw}
+            onChange={(e) => setDateFromRaw(e.target.value)}
+            placeholder="De: 15/03/2026 ou março"
+            aria-label="Filtrar painel por data inicial digitando"
+            className="h-7 w-40 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <span className="text-[11px] text-[var(--ink-subtle)]">até</span>
+          <input
+            type="text"
+            value={dateToRaw}
+            onChange={(e) => setDateToRaw(e.target.value)}
+            placeholder="Até: 30/06/2026"
+            aria-label="Filtrar painel por data final digitando"
+            className="h-7 w-32 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          {customDateBounds && (
+            <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] text-emerald-300">
+              {formatIsoToBr(customDateBounds.startIso) || "Início"} →{" "}
+              {formatIsoToBr(customDateBounds.endIso) || "Fim"}
+            </span>
+          )}
+          {(dateFromRaw || dateToRaw || periodFilter !== "all") && (
             <button
-              key={opt.id}
-              onClick={() => setPeriodFilter(opt.id)}
-              className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                periodFilter === opt.id
-                  ? "border-blue-500/70 bg-blue-600/20 text-blue-300"
-                  : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)] hover:text-[var(--ink)]"
-              }`}
+              type="button"
+              onClick={() => {
+                setPeriodFilter("all");
+                setDateFromRaw("");
+                setDateToRaw("");
+              }}
+              className="h-7 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] px-2 text-[11px] text-[var(--ink-muted)] hover:text-[var(--ink)]"
             >
-              {opt.label}
+              Limpar
             </button>
-          ))}
+          )}
         </div>
       </div>
 

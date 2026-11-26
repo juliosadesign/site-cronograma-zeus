@@ -78,6 +78,8 @@ export interface Member {
   inLabNow: boolean;
   labSchedule?: string;
   labSlots?: LabSlot[];
+  isGhost?: boolean;
+  roleConfirmed?: boolean;
   createdAt: string;
 }
 
@@ -282,6 +284,22 @@ export interface AircraftRevision {
   createdAt: string;
 }
 
+export type FeatureRequestPriority = "alta" | "media" | "baixa";
+export type FeatureRequestStatus = "pendente" | "em_analise" | "planejado" | "entregue";
+
+export interface AreaFeatureRequest {
+  id: string;
+  areaId: string;
+  authorId: string;
+  title: string;
+  details: string;
+  priority: FeatureRequestPriority;
+  status: FeatureRequestStatus;
+  devNotes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ZeusState {
   currentUserId: string;
   activeSeason: SeasonYear;
@@ -298,6 +316,8 @@ export interface ZeusState {
   meetings: Meeting[];
   attendance: MeetingAttendance[];
   areaNotes: AreaNote[];
+  areaFeatureRequests: AreaFeatureRequest[];
+  ghostAllocations: Record<string, string>;
   announcements: Announcement[];
   archiveDocuments: ArchiveDocument[];
   flightChecklist: FlightChecklistItem[];

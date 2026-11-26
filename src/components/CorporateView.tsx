@@ -11,6 +11,7 @@ import {
   Lock,
   Megaphone,
   Plus,
+  Sparkles,
   Target,
   Trash2,
   Users,
@@ -28,6 +29,7 @@ import {
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
 import type { FinancialKind, FinancialStatus, MarketingKind, MarketingStatus } from "@/lib/types";
+import { AreaFeatureRequestsPanel } from "./AreaFeatureRequestsPanel";
 import { AreaChip, AreaRoleBadge } from "./Badge";
 import { MemberAvatar } from "./MemberAvatar";
 
@@ -59,7 +61,12 @@ export function CorporateView({
   section: "financeiro" | "marketing" | "gestao";
   onOpenProfile: (memberId: string) => void;
 }) {
+  const { state } = useZeus();
+  const [corpTab, setCorpTab] = useState<"module" | "director_requests">("module");
   const areaMeta = getAreaMeta(section);
+  const pendingRequests = state.areaFeatureRequests.filter(
+    (r) => r.areaId === section && r.status !== "entregue"
+  ).length;
 
   return (
     <div className="space-y-5">
@@ -84,9 +91,46 @@ export function CorporateView({
         <AreaChip areaId={section} showName />
       </div>
 
-      {section === "financeiro" && <FinanceiroModule />}
-      {section === "marketing" && <MarketingModule />}
-      {section === "gestao" && <GestaoModule onOpenProfile={onOpenProfile} />}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--hairline)] pb-2">
+        <button
+          type="button"
+          onClick={() => setCorpTab("module")}
+          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+            corpTab === "module"
+              ? "border-blue-500/60 bg-blue-600/20 text-sky-300"
+              : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+          }`}
+        >
+          Painel da Área ({areaMeta.shortCode})
+        </button>
+        <button
+          type="button"
+          onClick={() => setCorpTab("director_requests")}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+            corpTab === "director_requests"
+              ? "border-amber-500/60 bg-amber-500/20 text-amber-300"
+              : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+          }`}
+        >
+          <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+          Pedidos do Diretor (Próx. Atualização)
+          {pendingRequests > 0 && (
+            <span className="rounded-full bg-amber-500/25 border border-amber-500/50 px-1.5 font-mono text-[10px] text-amber-200">
+              {pendingRequests}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {corpTab === "director_requests" ? (
+        <AreaFeatureRequestsPanel areaId={section} />
+      ) : (
+        <>
+          {section === "financeiro" && <FinanceiroModule />}
+          {section === "marketing" && <MarketingModule />}
+          {section === "gestao" && <GestaoModule onOpenProfile={onOpenProfile} />}
+        </>
+      )}
     </div>
   );
 }

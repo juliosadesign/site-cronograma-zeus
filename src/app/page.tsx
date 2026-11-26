@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { AdminView } from "@/components/AdminView";
 import { AppShell, type NavTab } from "@/components/AppShell";
 import { ArchiveView } from "@/components/ArchiveView";
@@ -15,6 +15,11 @@ import { FlightLessonsView } from "@/components/FlightLessonsView";
 import { KnowledgeGraphView } from "@/components/KnowledgeGraphView";
 import { MeetingsView } from "@/components/MeetingsView";
 import { MemberProfileModal } from "@/components/MemberProfileModal";
+import {
+  getTourCompletedSnapshot,
+  OnboardingTour,
+  subscribeTourCompleted,
+} from "@/components/OnboardingTour";
 import { RankingView } from "@/components/RankingView";
 import { SprintsView } from "@/components/SprintsView";
 import { ToastBanner } from "@/components/ToastBanner";
@@ -46,6 +51,13 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
   const [profileMemberId, setProfileMemberId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const tourDone = useSyncExternalStore(
+    subscribeTourCompleted,
+    getTourCompletedSnapshot,
+    () => true
+  );
+  const [manualTourOpen, setManualTourOpen] = useState<boolean | null>(null);
+  const tourOpen = manualTourOpen ?? !tourDone;
 
   useEffect(() => {
     setActiveTab(readTabFromUrl());
@@ -84,6 +96,7 @@ export default function HomePage() {
         onTabChange={handleTabChange}
         onOpenProfile={setProfileMemberId}
         onOpenPalette={() => setPaletteOpen(true)}
+        onOpenTour={() => setManualTourOpen(true)}
       >
         <div key={activeTab} className="zeus-tab-enter">
           {activeTab === "dashboard" && (
@@ -117,6 +130,11 @@ export default function HomePage() {
           onClose={() => setPaletteOpen(false)}
           onNavigate={handleTabChange}
           onOpenProfile={setProfileMemberId}
+        />
+        <OnboardingTour
+          open={tourOpen}
+          onClose={() => setManualTourOpen(false)}
+          onNavigate={handleTabChange}
         />
         <ToastBanner />
       </AppShell>

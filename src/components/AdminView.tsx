@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Check, Edit3, Plus, Save, Send, Trash2, UserPlus, X } from "lucide-react";
+import { Bell, Check, Edit3, Ghost, Link2, Plus, Save, Send, Trash2, Unlink, UserPlus, X } from "lucide-react";
 import {
   AREA_ROLE_META,
   canApproveAccounts,
@@ -9,6 +9,7 @@ import {
   ROLE_META,
   ZEUS_AREAS,
 } from "@/lib/domain";
+import { GHOST_TEAM_ROSTER, getUnallocatedGhosts } from "@/lib/ghost-members";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useZeus } from "@/lib/store";
 import type { AreaMembership, AreaRole, Member, Role } from "@/lib/types";
@@ -128,11 +129,13 @@ function getInitialMemberships(member: Member): AreaMembership[] {
 }
 
 function PendingReviewCard({ member }: { member: Member }) {
-  const { reviewMemberAccount } = useZeus();
+  const { state, reviewMemberAccount, allocateGhostToMember } = useZeus();
   const [role, setRole] = useState<Role>(member.requestedRole);
   const [memberships, setMemberships] = useState<AreaMembership[]>(() =>
     getInitialMemberships(member)
   );
+  const availableGhosts = getUnallocatedGhosts(state.members, state.ghostAllocations);
+  const [selectedGhostId, setSelectedGhostId] = useState<string>("");
 
   return (
     <div className="rounded-lg border border-amber-500/35 bg-[var(--surface-2)]/60 p-3.5 space-y-3">
@@ -163,7 +166,39 @@ function PendingReviewCard({ member }: { member: Member }) {
         <MembershipEditor memberships={memberships} onChange={setMemberships} />
       </div>
 
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--hairline)]">
+        {availableGhosts.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select
+              aria-label="Selecionar perfil fantasma para aprovar e alocar"
+              value={selectedGhostId}
+              onChange={(e) => setSelectedGhostId(e.target.value)}
+              className="h-7 rounded-md border border-violet-500/40 bg-[var(--surface-1)] px-2 text-[11px]"
+            >
+              <option value="">Alocar perfil fantasma (opcional)...</option>
+              {availableGhosts.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.fullName}
+                </option>
+              ))}
+            </select>
+            {selectedGhostId && (
+              <button
+                type="button"
+                onClick={() => {
+                  allocateGhostToMember(selectedGhostId, member.id);
+                  setSelectedGhostId("");
+                }}
+                className="inline-flex items-center gap-1 rounded-md bg-violet-600 hover:bg-violet-500 px-2.5 py-1 text-[11px] font-semibold text-white"
+              >
+                <Link2 className="h-3 w-3" /> Aprovar & Alocar Fantasma
+              </button>
+            )}
+          </div>
+        ) : (
+          <span />
+        )}
+        <div className="flex justify-end gap-2">
         <button
           type="button"
           onClick={() =>
@@ -194,18 +229,24 @@ function PendingReviewCard({ member }: { member: Member }) {
         >
           <Check className="h-3.5 w-3.5" /> Aprovar membro
         </button>
+        </div>
       </div>
     </div>
   );
 }
 
 function ApprovedMemberRow({ member }: { member: Member }) {
-  const { reviewMemberAccount } = useZeus();
+  const { state, reviewMemberAccount, allocateGhostToMember, unallocateGhost } = useZeus();
   const [editing, setEditing] = useState(false);
   const [role, setRole] = useState<Role>(member.role);
   const [memberships, setMemberships] = useState<AreaMembership[]>(() =>
     getInitialMemberships(member)
   );
+  const [ghostPick, setGhostPick] = useState("");
+  const allocatedEntries = Object.entries(state.ghostAllocations ?? {}).filter(
+    ([, profileId]) => profileId === member.id
+  );
+  const availableGhosts = getUnallocatedGhosts(state.members, state.ghostAllocations ?? {});
 
   return (
     <div className="py-3 space-y-2.5">
@@ -213,27 +254,109 @@ function ApprovedMemberRow({ member }: { member: Member }) {
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium">{member.fullName}</span>
-            <RoleBadge role={member.role} />
+            {(!member.isGhost || member.roleConfirmed) && <RoleBadge role={member.role} />}
+            {member.isGhost && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/40 bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300">
+                <Ghost className="h-2.5 w-2.5" /> Fantasma (Apresentação)
+              </span>
+            )}
+            {allocatedEntries.map(([gId]) => {
+              const gDef = GHOST_TEAM_ROSTER.find((g) => g.id === gId);
+              return (
+                <span
+                  key={gId}
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300"
+                >
+                  <Link2 className="h-2.5 w-2.5" />
+                  Fantasma alocado: {gDef?.fullName ?? gId}
+                  <button
+                    type="button"
+                    onClick={() => unallocateGhost(gId)}
+                    title="Desvincular fantasma"
+                    className="ml-0.5 hover:text-rose-400"
+                  >
+                    <Unlink className="h-2.5 w-2.5" />
+                  </button>
+                </span>
+              );
+            })}
           </div>
           <div className="flex flex-wrap gap-1">
-            {getInitialMemberships(member).map((m) => (
-              <AreaRoleBadge key={m.areaId} areaId={m.areaId} role={m.role} />
-            ))}
+            {member.areaIds.length > 0 ? (
+              member.isGhost && !member.roleConfirmed ? (
+                member.areaIds.map((areaId) => {
+                  const area = getAreaMeta(areaId);
+                  return (
+                    <span
+                      key={areaId}
+                      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium ${area.chipClass}`}
+                    >
+                      {area.shortCode} · {area.name}
+                    </span>
+                  );
+                })
+              ) : (
+                getInitialMemberships(member).map((m) => (
+                  <AreaRoleBadge key={m.areaId} areaId={m.areaId} role={m.role} />
+                ))
+              )
+            ) : (
+              <span className="text-[11px] text-[var(--ink-subtle)]">
+                Área ainda não vinculada nos arquivos importados
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setRole(member.role);
-              setMemberships(getInitialMemberships(member));
-              setEditing((v) => !v);
-            }}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] hover:border-blue-500/50"
-          >
-            <Edit3 className="h-3 w-3" /> {editing ? "Fechar" : "Editar vínculos"}
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {member.isGhost ? (
+            <span className="text-[11px] text-[var(--ink-subtle)]">
+              Somente visualização local
+            </span>
+          ) : (
+            <>
+              {availableGhosts.length > 0 && (
+                <div className="inline-flex items-center gap-1">
+                  <select
+                    aria-label={`Alocar perfil fantasma para ${member.fullName}`}
+                    value={ghostPick}
+                    onChange={(e) => setGhostPick(e.target.value)}
+                    className="h-7 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 text-[11px] max-w-[190px]"
+                  >
+                    <option value="">Alocar fantasma...</option>
+                    {availableGhosts.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.fullName}
+                      </option>
+                    ))}
+                  </select>
+                  {ghostPick && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        allocateGhostToMember(ghostPick, member.id);
+                        setGhostPick("");
+                      }}
+                      className="h-7 inline-flex items-center gap-1 rounded-md bg-violet-600 hover:bg-violet-500 px-2 text-[11px] font-semibold text-white"
+                    >
+                      <Link2 className="h-3 w-3" /> Alocar
+                    </button>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setRole(member.role);
+                  setMemberships(getInitialMemberships(member));
+                  setEditing((v) => !v);
+                }}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] hover:border-blue-500/50"
+              >
+                <Edit3 className="h-3 w-3" /> {editing ? "Fechar" : "Editar vínculos"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -290,6 +413,8 @@ export function AdminView() {
   const {
     state,
     currentUser,
+    ghostMembersEnabled,
+    toggleGhostMembers,
     simulateSignup,
     updateNotificationConfig,
     saveNotificationConfigRemote,
@@ -314,6 +439,8 @@ export function AdminView() {
 
   const pending = state.members.filter((m) => m.accountStatus === "pending");
   const approved = state.members.filter((m) => m.accountStatus === "approved");
+  const realApprovedCount = approved.filter((m) => !m.isGhost).length;
+  const ghostCount = approved.filter((m) => m.isGhost).length;
 
   const handleSimulate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -336,6 +463,44 @@ export function AdminView() {
           Defina patentes globais e múltiplos papéis por área (ex.: Diretor em uma área e Efetivado em outra).
         </p>
       </div>
+
+      {/* Presentation Mode: Ghost Team Members Toggle */}
+      <section className="zeus-card rounded-xl p-4 border-violet-500/35 bg-violet-500/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Ghost className="h-4 w-4 text-violet-400" />
+            <h2 className="text-sm font-semibold">
+              Modo Apresentação · Membros Fantasmas da Equipe
+            </h2>
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                ghostMembersEnabled
+                  ? "border-violet-500/50 bg-violet-500/20 text-violet-300"
+                  : "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)]"
+              }`}
+            >
+              {ghostMembersEnabled ? `ATIVO (${ghostCount} fantasmas)` : "DESATIVADO"}
+            </span>
+          </div>
+          <p className="text-xs text-[var(--ink-muted)] max-w-2xl">
+            Ative para demonstrar a plataforma com os nomes reais da Equipe Zeus (Microsoft Teams e
+            Presença 2026) sem gravar no Supabase. Campos sem confirmação (e-mail, curso, horários ou
+            áreas não confirmadas) permanecem em branco.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={toggleGhostMembers}
+          className={`zeus-btn shrink-0 inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-xs font-semibold transition-colors ${
+            ghostMembersEnabled
+              ? "border-violet-400/70 bg-violet-600 hover:bg-violet-500 text-white"
+              : "border-[var(--hairline-strong)] bg-[var(--surface-2)] hover:border-violet-500/50 text-[var(--ink)]"
+          }`}
+        >
+          <Ghost className="h-3.5 w-3.5" />
+          {ghostMembersEnabled ? "Desativar fantasmas" : "Ativar membros fantasmas"}
+        </button>
+      </section>
 
       {/* Pending Approvals */}
       <section className="zeus-card rounded-lg p-4 space-y-3">
@@ -401,7 +566,9 @@ export function AdminView() {
 
       {/* Approved Members Full Role + Multi-Area Edit */}
       <section className="zeus-card rounded-lg p-4 space-y-2">
-        <h2 className="text-sm font-semibold">Membros Aprovados ({approved.length})</h2>
+        <h2 className="text-sm font-semibold">
+          Membros Aprovados ({realApprovedCount} reais{ghostCount > 0 ? ` + ${ghostCount} fantasmas` : ""})
+        </h2>
         <div className="divide-y divide-[var(--hairline)]">
           {approved.map((m) => (
             <ApprovedMemberRow key={m.id} member={m} />

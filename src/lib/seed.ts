@@ -791,4 +791,6 @@ export const INITIAL_ZEUS_STATE: ZeusState = {
       createdAt: "2026-05-26",
     },
   ],
+  areaFeatureRequests: [],
+  ghostAllocations: {},
 };
