@@ -1,8 +1,14 @@
 "use client";
 
-import { Code2, Crown, Shield, Sparkles, UserCheck, User } from "lucide-react";
-import { getAreaCode, PRIORITY_META, ROLE_META, TASK_STATUS_META } from "@/lib/domain";
-import type { Priority, Role, TaskStatus } from "@/lib/types";
+import { Code2, Crown, Shield, Sparkles, User, UserCheck } from "lucide-react";
+import {
+  AREA_ROLE_META,
+  getAreaMeta,
+  PRIORITY_META,
+  ROLE_META,
+  TASK_STATUS_META,
+} from "@/lib/domain";
+import type { AreaRole, Priority, Role, TaskStatus } from "@/lib/types";
 
 const ROLE_ICON: Record<Role, React.ComponentType<{ className?: string }>> = {
   desenvolvedor: Code2,
@@ -22,6 +28,25 @@ export function RoleBadge({ role }: { role: Role }) {
     >
       <Icon className="h-3 w-3" />
       {meta.label}
+    </span>
+  );
+}
+
+export function AreaRoleBadge({ role, areaId }: { role: AreaRole; areaId?: string }) {
+  const roleMeta = AREA_ROLE_META[role];
+  const areaMeta = areaId ? getAreaMeta(areaId) : null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium ${roleMeta.badgeClass}`}
+    >
+      {areaMeta && (
+        <span
+          className="h-1.5 w-1.5 rounded-full shrink-0"
+          style={{ backgroundColor: areaMeta.colorHex }}
+        />
+      )}
+      {areaMeta ? `${areaMeta.shortCode} · ` : ""}
+      {roleMeta.label}
     </span>
   );
 }
@@ -51,16 +76,28 @@ export function StatusBadge({ status }: { status: TaskStatus }) {
   );
 }
 
-export function AreaChip({ areaId, subtle }: { areaId: string; subtle?: boolean }) {
+export function AreaChip({
+  areaId,
+  subtle,
+  showName,
+}: {
+  areaId: string;
+  subtle?: boolean;
+  showName?: boolean;
+}) {
+  const meta = getAreaMeta(areaId);
   return (
     <span
-      className={`inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-tight ${
-        subtle
-          ? "border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)]"
-          : "border-[var(--hairline-strong)] bg-[var(--surface-2)] text-[var(--ink-muted)]"
+      title={meta.name}
+      className={`inline-flex items-center gap-1.5 rounded border px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-tight ${
+        subtle ? `${meta.chipClass} opacity-85` : meta.chipClass
       }`}
     >
-      {getAreaCode(areaId)}
+      <span
+        className="h-1.5 w-1.5 rounded-full shrink-0"
+        style={{ backgroundColor: meta.colorHex }}
+      />
+      {showName ? `${meta.shortCode} · ${meta.name}` : meta.shortCode}
     </span>
   );
 }

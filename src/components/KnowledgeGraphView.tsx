@@ -6,6 +6,8 @@ import {
   computeAreaGraphEdges,
   computeReportPercentage,
   getAreaCode,
+  getAreaMeta,
+  getReportOverride,
   ZEUS_AREAS,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
@@ -20,6 +22,7 @@ interface SatelliteNode {
   x: number;
   y: number;
   url?: string;
+  blockedByAreaId?: string;
 }
 
 const DEFAULT_HUBS: Record<string, { x: number; y: number }> = (() => {
@@ -99,6 +102,19 @@ export function KnowledgeGraphView() {
     [scopedTasks, scopedReports, scopedArchive, scopedLessons]
   );
 
+  const blockedEdges = useMemo(
+    () =>
+      scopedTasks
+        .filter((t) => Boolean(t.blockedByAreaId && t.blockedByAreaId !== t.areaId))
+        .map((t) => ({
+          id: t.id,
+          from: t.areaId,
+          to: t.blockedByAreaId!,
+          title: t.title,
+        })),
+    [scopedTasks]
+  );
+
   const satellites = useMemo<SatelliteNode[]>(() => {
     const grouped: Record<string, Array<Omit<SatelliteNode, "x" | "y">>> = {};
     const pushItem = (item: Omit<SatelliteNode, "x" | "y">) => {
@@ -114,6 +130,7 @@ export function KnowledgeGraphView() {
         areaId: t.areaId,
         impactedAreaIds: t.impactedAreaIds,
         url: t.externalUrl,
+        blockedByAreaId: t.blockedByAreaId,
       });
     }
     for (const d of scopedArchive) {
@@ -168,7 +185,7 @@ export function KnowledgeGraphView() {
 
   const selectedSat = satellites.find((s) => s.id === selectedId) ?? null;
   const activeAreaId = selectedSat ? selectedSat.areaId : selectedId;
-  const activeArea = ZEUS_AREAS.find((a) => a.id === activeAreaId) ?? ZEUS_AREAS[0];
+  const activeArea = getAreaMeta(activeAreaId);
   const outgoing = edges.filter((e) => e.from === activeArea.id);
   const incoming = edges.filter((e) => e.to === activeArea.id);
 
@@ -189,7 +206,7 @@ export function KnowledgeGraphView() {
             Grafo de Conexões · Constelação Obsidian
           </h1>
           <p className="text-xs text-[var(--ink-subtle)]">
-            Liga automaticamente as 11 áreas pelos assuntos de sprints, documentos do acervo e erros da competição. Arraste qualquer área para reorganizar.
+            Cada uma das 11 áreas com sua cor própria. Tracejado vermelho indica bloqueios ativos entre áreas; arraste os nós para reorganizar.
           </p>
         </div>
 
@@ -279,10 +296,14 @@ export function KnowledgeGraphView() {
             </button>
           );
         })}
+        {blockedEdges.length > 0 && (
+          <span className="rounded-full border border-rose-500/45 bg-rose-500/12 px-2.5 py-0.5 text-rose-300 font-medium">
+            {blockedEdges.length} bloqueio(s) em tracejado vermelho
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Interactive Obsidian Constellation Canvas */}
         <div className="lg:col-span-2 zeus-card rounded-xl p-2 bg-[#07090e] zeus-hud-grid overflow-hidden">
           <svg
             viewBox={`${viewX} ${viewY} ${viewW} ${viewH}`}
@@ -297,12 +318,13 @@ export function KnowledgeGraphView() {
             onPointerUp={() => setDraggingId(null)}
             onPointerLeave={() => setDraggingId(null)}
           >
-            {/* Inter-area hub connections */}
+            {/* Inter-area hub connections colored by source area */}
             {edges.map((edge) => {
               const p1 = hubPositions[edge.from];
               const p2 = hubPositions[edge.to];
               if (!p1 || !p2) return null;
               const touchesActive = edge.from === activeArea.id || edge.to === activeArea.id;
+              const srcMeta = getAreaMeta(edge.from);
               return (
                 <line
                   key={`${edge.from}-${edge.to}`}
@@ -310,10 +332,30 @@ export function KnowledgeGraphView() {
                   y1={p1.y}
                   x2={p2.x}
                   y2={p2.y}
-                  stroke={edge.criticalCount > 0 ? "#f59e0b" : "#38bdf8"}
+                  stroke={srcMeta.colorHex}
                   strokeWidth={Math.min(3, 0.9 + edge.weight * 0.4)}
-                  opacity={touchesActive ? 0.85 : 0.14}
+                  opacity={touchesActive ? 0.85 : 0.16}
                   style={{ transition: "opacity 180ms ease" }}
+                />
+              );
+            })}
+
+            {/* Blocked task links in dashed rose/red */}
+            {blockedEdges.map((be) => {
+              const p1 = hubPositions[be.from];
+              const p2 = hubPositions[be.to];
+              if (!p1 || !p2) return null;
+              return (
+                <line
+                  key={`blk-${be.id}`}
+                  x1={p1.x}
+                  y1={p1.y}
+                  x2={p2.x}
+                  y2={p2.y}
+                  stroke="#fb7185"
+                  strokeWidth="2.1"
+                  strokeDasharray="5 4"
+                  opacity="0.92"
                 />
               );
             })}
@@ -328,11 +370,13 @@ export function KnowledgeGraphView() {
               const matched = matchesQuery(sat.label);
               const op = matched ? (isRelated ? 0.65 : 0.12) : 0.05;
               const satColor =
-                sat.kind === "archive"
+                sat.blockedByAreaId
+                  ? "#fb7185"
+                  : sat.kind === "archive"
                   ? "#f59e0b"
                   : sat.kind === "lesson"
                   ? "#fb7185"
-                  : "#38bdf8";
+                  : getAreaMeta(sat.areaId).colorHex;
 
               return (
                 <g key={`edges-${sat.id}`} opacity={op} style={{ transition: "opacity 180ms ease" }}>
@@ -373,11 +417,13 @@ export function KnowledgeGraphView() {
                 sat.impactedAreaIds.includes(activeArea.id);
               const matched = matchesQuery(sat.label);
               const fill =
-                sat.kind === "archive"
+                sat.blockedByAreaId
+                  ? "#fb7185"
+                  : sat.kind === "archive"
                   ? "#f59e0b"
                   : sat.kind === "lesson"
                   ? "#fb7185"
-                  : "#38bdf8";
+                  : getAreaMeta(sat.areaId).colorHex;
 
               return (
                 <g
@@ -401,14 +447,15 @@ export function KnowledgeGraphView() {
               );
             })}
 
-            {/* 11 Area Hub Nodes */}
+            {/* 11 Area Hub Nodes colored by each area's colorHex */}
             {ZEUS_AREAS.map((area) => {
               const pos = hubPositions[area.id];
-              const pct = computeReportPercentage(
-                area.id,
-                scopedReports,
-                state.reportOverrides[area.id]
+              const override = getReportOverride(
+                state.reportOverrides,
+                state.activeSeason,
+                area.id
               );
+              const pct = computeReportPercentage(area.id, scopedReports, override);
               const deg = degreeMap[area.id] ?? 0;
               const r = 16 + Math.min(9, deg * 1.1);
               const isSelected = area.id === activeArea.id;
@@ -419,14 +466,12 @@ export function KnowledgeGraphView() {
               );
               const matched = matchesQuery(area.name) || matchesQuery(area.shortCode);
               const dimmed = !matched || (!isSelected && !isNeighbor);
-              const ringColor =
-                pct >= 75 ? "#10b981" : pct >= 40 ? "#f59e0b" : "#3b82f6";
 
               return (
                 <g
                   key={area.id}
                   transform={`translate(${pos.x}, ${pos.y})`}
-                  opacity={dimmed ? 0.34 : 1}
+                  opacity={dimmed ? 0.36 : 1}
                   className="cursor-grab active:cursor-grabbing"
                   style={{ transition: "opacity 180ms ease" }}
                   onPointerDown={(e) => {
@@ -438,30 +483,31 @@ export function KnowledgeGraphView() {
                   {isSelected && (
                     <circle
                       r={r + 6}
-                      fill="rgba(59, 130, 246, 0.18)"
-                      stroke="rgba(59, 130, 246, 0.65)"
-                      strokeWidth="1.2"
+                      fill={`${area.colorHex}29`}
+                      stroke={area.colorHex}
+                      strokeWidth="1.3"
                     />
                   )}
                   <circle
                     r={r}
                     fill="#0d111a"
-                    stroke={isSelected ? "#38bdf8" : ringColor}
-                    strokeWidth={isSelected ? 2.5 : 1.8}
+                    stroke={area.colorHex}
+                    strokeWidth={isSelected ? 2.8 : 2}
                   />
                   <text
                     textAnchor="middle"
                     dy="-1"
-                    className="fill-slate-100 font-mono text-[8.5px] font-bold pointer-events-none"
+                    fill={area.colorHex}
+                    className="font-mono text-[8.5px] font-bold pointer-events-none"
                   >
                     {area.shortCode}
                   </text>
                   <text
                     textAnchor="middle"
                     dy="9"
-                    className="fill-amber-400 font-mono text-[7.5px] pointer-events-none"
+                    className="fill-slate-200 font-mono text-[7.5px] pointer-events-none"
                   >
-                    {pct}%
+                    {area.category === "corporate" ? "CORP" : `${pct}%`}
                   </text>
                   <text
                     textAnchor="middle"
@@ -477,7 +523,10 @@ export function KnowledgeGraphView() {
         </div>
 
         {/* Side Connection Inspector */}
-        <aside className="zeus-card rounded-xl p-4 space-y-4">
+        <aside
+          className="zeus-card rounded-xl p-4 space-y-4"
+          style={{ borderTopWidth: "3px", borderTopColor: activeArea.colorHex }}
+        >
           {selectedSat && (
             <div className="rounded-lg border border-blue-500/40 bg-blue-500/10 p-3 space-y-1.5">
               <div className="flex items-center justify-between text-[10px] font-mono text-sky-400">
@@ -491,6 +540,11 @@ export function KnowledgeGraphView() {
                 <span>{getAreaCode(selectedSat.areaId)}</span>
               </div>
               <div className="text-xs font-semibold">{selectedSat.label}</div>
+              {selectedSat.blockedByAreaId && (
+                <div className="text-[11px] text-rose-300">
+                  Bloqueada por: {getAreaCode(selectedSat.blockedByAreaId)}
+                </div>
+              )}
               {selectedSat.impactedAreaIds.length > 0 && (
                 <div className="text-[11px] text-[var(--ink-subtle)]">
                   Conecta com: {selectedSat.impactedAreaIds.map(getAreaCode).join(", ")}
@@ -510,8 +564,17 @@ export function KnowledgeGraphView() {
           )}
 
           <div>
-            <div className="font-mono text-[10px] text-blue-400">{activeArea.shortCode}</div>
-            <h2 className="text-base font-semibold">{activeArea.name}</h2>
+            <div className="flex items-center gap-2">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: activeArea.colorHex }}
+              />
+              <span className="font-mono text-[10px] font-bold" style={{ color: activeArea.colorHex }}>
+                {activeArea.shortCode} ·{" "}
+                {activeArea.category === "corporate" ? "CORPORATIVO" : "TÉCNICA"}
+              </span>
+            </div>
+            <h2 className="text-base font-semibold mt-0.5">{activeArea.name}</h2>
             <p className="text-xs text-[var(--ink-subtle)]">{activeArea.description}</p>
           </div>
 
@@ -526,7 +589,7 @@ export function KnowledgeGraphView() {
             ) : (
               <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                 {outgoing.map((edge) => {
-                  const target = ZEUS_AREAS.find((a) => a.id === edge.to);
+                  const target = getAreaMeta(edge.to);
                   return (
                     <div
                       key={edge.to}
@@ -535,10 +598,11 @@ export function KnowledgeGraphView() {
                       <button
                         type="button"
                         onClick={() => setSelectedId(edge.to)}
-                        className="text-xs font-semibold flex items-center gap-1 hover:text-amber-400"
+                        className="text-xs font-semibold flex items-center gap-1.5 hover:opacity-85"
+                        style={{ color: target.colorHex }}
                       >
-                        <ArrowRight className="h-3 w-3 text-amber-500" />
-                        {target?.name ?? edge.to} ({edge.weight})
+                        <ArrowRight className="h-3 w-3" />
+                        {target.name} ({edge.weight})
                       </button>
                       {edge.items.map((item) => (
                         <div
@@ -567,7 +631,7 @@ export function KnowledgeGraphView() {
             ) : (
               <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                 {incoming.map((edge) => {
-                  const src = ZEUS_AREAS.find((a) => a.id === edge.from);
+                  const src = getAreaMeta(edge.from);
                   return (
                     <div
                       key={edge.from}
@@ -576,9 +640,10 @@ export function KnowledgeGraphView() {
                       <button
                         type="button"
                         onClick={() => setSelectedId(edge.from)}
-                        className="text-xs font-semibold hover:text-sky-400"
+                        className="text-xs font-semibold hover:opacity-85"
+                        style={{ color: src.colorHex }}
                       >
-                        {src?.name ?? edge.from} ({edge.weight})
+                        {src.name} ({edge.weight})
                       </button>
                       {edge.items.map((item) => (
                         <div key={item.id} className="text-[11px] text-[var(--ink-muted)] truncate">

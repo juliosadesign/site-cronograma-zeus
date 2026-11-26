@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import {
   computeForecastTarget,
   evaluateScheduleHealth,
-  getAreaCode,
-  getAreaName,
+  getAreaMeta,
   projectTeamProgressAt,
 } from "@/lib/domain";
 
@@ -148,6 +147,7 @@ export function ForecastCurveChart({
 
   const projectedAtInspect = projectTeamProgressAt(actualPct, safeCurrentDays, inspectDays);
   const healthAtInspect = evaluateScheduleHealth(projectedAtInspect, inspectDays);
+
   const markerX = toX(inspectDays);
   const markerProjY = toY(projectedAtInspect);
   const markerTargetY = toY(healthAtInspect.targetPct);
@@ -221,7 +221,6 @@ export function ForecastCurveChart({
           );
         })}
 
-        {/* Projected area + luminous amber curve */}
         <path d={projArea} fill="url(#zeusForecastFill)" />
         <path
           d={targetPath}
@@ -240,7 +239,6 @@ export function ForecastCurveChart({
           style={{ filter: "drop-shadow(0 0 6px rgba(245, 158, 11, 0.45))" }}
         />
 
-        {/* Inspection vertical marker */}
         <line
           x1={markerX}
           x2={markerX}
@@ -266,7 +264,6 @@ export function ForecastCurveChart({
         ))}
       </svg>
 
-      {/* Interactive slider + readout */}
       <div className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/80 p-3 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <span>
@@ -297,11 +294,11 @@ export function AreaHealthHeatmap({
   onSelectArea,
 }: {
   rows: Array<{ areaId: string; reportPct: number; sprintPct: number; linksCount: number }>;
-  onSelectArea?: () => void;
+  onSelectArea?: (areaId: string) => void;
 }) {
   const cellTone = (val: number) => {
-    if (val >= 75) return "bg-amber-500 text-zinc-950 font-semibold";
-    if (val >= 45) return "bg-amber-500/55 text-white font-medium";
+    if (val >= 75) return "bg-emerald-500/85 text-zinc-950 font-semibold";
+    if (val >= 45) return "bg-amber-500/65 text-zinc-950 font-medium";
     if (val >= 20) return "bg-blue-600/45 text-sky-100";
     return "bg-[var(--surface-2)] text-[var(--ink-subtle)]";
   };
@@ -318,18 +315,23 @@ export function AreaHealthHeatmap({
       <div className="space-y-1">
         {rows.map((r) => {
           const linkScore = Math.min(100, r.linksCount * 25);
+          const meta = getAreaMeta(r.areaId);
           return (
             <button
               key={r.areaId}
               type="button"
-              onClick={onSelectArea}
+              onClick={() => onSelectArea?.(r.areaId)}
               className="w-full grid grid-cols-12 gap-1.5 items-center text-left hover:opacity-95 transition-opacity"
             >
-              <span className="col-span-5 text-[11px] font-medium truncate pr-1">
-                <span className="font-mono text-[10px] text-sky-400 mr-1.5">
-                  {getAreaCode(r.areaId)}
+              <span className="col-span-5 text-[11px] font-medium truncate pr-1 flex items-center gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: meta.colorHex }}
+                />
+                <span className="font-mono text-[10px]" style={{ color: meta.colorHex }}>
+                  {meta.shortCode}
                 </span>
-                {getAreaName(r.areaId)}
+                <span className="truncate">{meta.name}</span>
               </span>
               <span className={`col-span-2 rounded py-1 text-center font-mono text-[10px] ${cellTone(r.reportPct)}`}>
                 {r.reportPct}%
@@ -471,32 +473,37 @@ export function StatusDonutChart({
 
 export function ReportsBarChart({
   items,
-  teamAverage,
 }: {
   items: Array<{ areaId: string; percentage: number }>;
-  teamAverage: number;
 }) {
   const sorted = [...items].sort((a, b) => b.percentage - a.percentage).slice(0, 6);
 
   return (
     <div className="space-y-2.5">
       {sorted.map((item, idx) => {
-        const isAbove = item.percentage >= teamAverage;
+        const meta = getAreaMeta(item.areaId);
         return (
           <div key={item.areaId} className="space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium truncate">{getAreaName(item.areaId)}</span>
-              <span className="font-mono font-semibold text-amber-400">{item.percentage}%</span>
+              <span className="font-medium truncate flex items-center gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: meta.colorHex }}
+                />
+                {meta.name}
+              </span>
+              <span className="font-mono font-semibold" style={{ color: meta.colorHex }}>
+                {item.percentage}%
+              </span>
             </div>
             <div className="h-2 w-full rounded-full bg-[var(--surface-2)] overflow-hidden">
               <div
                 style={{
                   width: `${Math.max(3, item.percentage)}%`,
                   animationDelay: `${idx * 40}ms`,
+                  backgroundColor: meta.colorHex,
                 }}
-                className={`zeus-bar-grow-x h-full rounded-full ${
-                  isAbove ? "bg-amber-500" : "bg-blue-500"
-                }`}
+                className="zeus-bar-grow-x h-full rounded-full"
               />
             </div>
           </div>

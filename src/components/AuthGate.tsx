@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Clock, LogOut, RefreshCw, ShieldAlert, Zap } from "lucide-react";
-import { ZEUS_AREAS } from "@/lib/domain";
+import { Clock, LogOut, Plus, RefreshCw, ShieldAlert, Trash2, Zap } from "lucide-react";
+import { AREA_ROLE_META, getAreaMeta, ZEUS_AREAS } from "@/lib/domain";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useZeus } from "@/lib/store";
-import type { Role } from "@/lib/types";
+import type { AreaMembership, AreaRole, Role } from "@/lib/types";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const {
@@ -23,8 +23,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [requestedRole, setRequestedRole] = useState<Role>("calouro");
-  const [areaIds, setAreaIds] = useState<string[]>(["aerodinamica"]);
+
+  // Multi-area membership builder (choose Area first -> choose Role in that Area)
+  const [selectedAreaId, setSelectedAreaId] = useState<string>("aerodinamica");
+  const [selectedAreaRole, setSelectedAreaRole] = useState<AreaRole>("calouro");
+  const [areaMemberships, setAreaMemberships] = useState<AreaMembership[]>([
+    { areaId: "aerodinamica", role: "calouro" },
+  ]);
+  const [globalLeadership, setGlobalLeadership] = useState<"none" | "cocapitao" | "capitao" | "desenvolvedor">("none");
+
   const [localMsg, setLocalMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -81,6 +88,25 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       }
     }
     setBusy(false);
+  };
+
+  const handleAddMembership = () => {
+    setAreaMemberships((prev) => {
+      const exists = prev.some((m) => m.areaId === selectedAreaId);
+      if (exists) {
+        return prev.map((m) =>
+          m.areaId === selectedAreaId ? { areaId: selectedAreaId, role: selectedAreaRole } : m
+        );
+      }
+      return [...prev, { areaId: selectedAreaId, role: selectedAreaRole }];
+    });
+  };
+
+  const deriveRequestedRole = (): Role => {
+    if (globalLeadership !== "none") return globalLeadership;
+    if (areaMemberships.some((m) => m.role === "diretor")) return "diretor";
+    if (areaMemberships.some((m) => m.role === "efetivado")) return "efetivado";
+    return "calouro";
   };
 
   if (!sessionUser) {
@@ -182,69 +208,137 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       String(sessionUser.user_metadata?.full_name ?? sessionUser.email ?? "").split("@")[0];
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-[var(--canvas)] text-[var(--ink)]">
-        <div className="zeus-card zeus-tab-enter w-full max-w-lg rounded-2xl p-6 space-y-4">
-          <h1 className="text-lg font-semibold">Complete seu cadastro na Zeus</h1>
-          <p className="text-xs text-[var(--ink-subtle)]">
-            Escolha sua(s) área(s) de atuação. O primeiro membro cadastrado entra como Desenvolvedor; os seguintes aguardam aprovação dos Capitães.
-          </p>
+        <div className="zeus-card zeus-tab-enter w-full max-w-xl rounded-2xl p-6 space-y-4">
+          <div>
+            <h1 className="text-lg font-semibold">Complete seu cadastro na Zeus</h1>
+            <p className="text-xs text-[var(--ink-subtle)] mt-1">
+              Escolha primeiro a <strong>área</strong> e depois a sua <strong>função nela</strong> (ex.: Diretor em uma área e Efetivado em outra). Você pode adicionar quantos vínculos quiser.
+            </p>
+          </div>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
               setBusy(true);
               await completeOnboarding({
                 fullName: fullName.trim() || defaultName,
-                requestedRole,
-                areaIds,
+                requestedRole: deriveRequestedRole(),
+                areaMemberships,
               });
               setBusy(false);
             }}
-            className="space-y-3"
+            className="space-y-4"
           >
-            <input
-              type="text"
-              placeholder={defaultName || "Seu nome completo"}
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full h-9 rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-3 text-xs"
-            />
-            <select
-              value={requestedRole}
-              onChange={(e) => setRequestedRole(e.target.value as Role)}
-              className="w-full h-9 rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-3 text-xs"
-            >
-              <option value="calouro">Solicitar entrada como: Calouro</option>
-              <option value="efetivado">Solicitar entrada como: Efetivado</option>
-              <option value="diretor">Solicitar entrada como: Diretor</option>
-              <option value="capitao">Solicitar entrada como: Capitão / Co-Capitão</option>
-            </select>
             <div>
-              <div className="text-[11px] text-[var(--ink-subtle)] mb-1.5">
-                Selecione 1 ou mais áreas:
+              <label className="block text-[11px] text-[var(--ink-subtle)] mb-1">Nome completo</label>
+              <input
+                type="text"
+                placeholder={defaultName || "Seu nome completo"}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full h-9 rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-3 text-xs"
+              />
+            </div>
+
+            {/* Step 1 -> Area, Step 2 -> Role in that Area */}
+            <div className="rounded-xl border border-[var(--hairline-strong)] bg-[var(--surface-2)]/60 p-3.5 space-y-3">
+              <div className="text-xs font-semibold">Vínculos por Área (Área → Função)</div>
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                <select
+                  value={selectedAreaId}
+                  onChange={(e) => setSelectedAreaId(e.target.value)}
+                  className="sm:col-span-5 h-9 rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-2.5 text-xs"
+                >
+                  <optgroup label="Áreas Técnicas (8)">
+                    {ZEUS_AREAS.filter((a) => a.category === "technical").map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.shortCode} · {a.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Corporativo / Empresarial (3)">
+                    {ZEUS_AREAS.filter((a) => a.category === "corporate").map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.shortCode} · {a.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+
+                <select
+                  value={selectedAreaRole}
+                  onChange={(e) => setSelectedAreaRole(e.target.value as AreaRole)}
+                  className="sm:col-span-4 h-9 rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-2.5 text-xs"
+                >
+                  <option value="calouro">Calouro na área</option>
+                  <option value="efetivado">Efetivado na área</option>
+                  <option value="diretor">Diretor desta área</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleAddMembership}
+                  className="sm:col-span-3 h-9 inline-flex items-center justify-center gap-1 rounded-lg bg-amber-500 hover:bg-amber-400 px-3 text-xs font-semibold text-zinc-950"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Adicionar
+                </button>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {ZEUS_AREAS.map((a) => {
-                  const active = areaIds.includes(a.id);
+
+              <div className="space-y-1.5">
+                {areaMemberships.map((m) => {
+                  const area = getAreaMeta(m.areaId);
                   return (
-                    <button
-                      type="button"
-                      key={a.id}
-                      onClick={() =>
-                        setAreaIds((prev) =>
-                          prev.includes(a.id) ? prev.filter((x) => x !== a.id) : [...prev, a.id]
-                        )
-                      }
-                      className={`rounded border px-2 py-1 font-mono text-[10px] ${
-                        active
-                          ? "border-blue-500 bg-blue-500/15 text-sky-400"
-                          : "border-[var(--hairline)] text-[var(--ink-subtle)]"
-                      }`}
+                    <div
+                      key={m.areaId}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-[var(--hairline)] bg-[var(--surface-1)] px-2.5 py-1.5 text-xs"
                     >
-                      {a.shortCode} · {a.name}
-                    </button>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: area.colorHex }}
+                        />
+                        <span className="font-mono text-[10px] text-[var(--ink-subtle)]">{area.shortCode}</span>
+                        <span className="font-medium truncate">{area.name}</span>
+                        <span className="text-[11px] text-amber-400 font-medium">
+                          · {AREA_ROLE_META[m.role].label}
+                        </span>
+                      </div>
+                      {areaMemberships.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAreaMemberships((prev) => prev.filter((x) => x.areaId !== m.areaId))
+                          }
+                          className="text-[var(--ink-subtle)] hover:text-rose-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
             </div>
+
+            <div>
+              <label className="block text-[11px] text-[var(--ink-subtle)] mb-1">
+                Cargo de liderança global (opcional)
+              </label>
+              <select
+                value={globalLeadership}
+                onChange={(e) =>
+                  setGlobalLeadership(
+                    e.target.value as "none" | "cocapitao" | "capitao" | "desenvolvedor"
+                  )
+                }
+                className="w-full h-9 rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-3 text-xs"
+              >
+                <option value="none">Sem cargo global (atuar somente pelas áreas acima)</option>
+                <option value="cocapitao">Co-Capitão</option>
+                <option value="capitao">Capitão</option>
+                <option value="desenvolvedor">Desenvolvedor</option>
+              </select>
+            </div>
+
             <div className="flex items-center justify-between pt-2">
               <button
                 type="button"
@@ -283,7 +377,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           <p className="text-xs text-[var(--ink-subtle)]">
             {rejected
               ? "Converse com um Capitão ou com o Desenvolvedor da Zeus AeroDesign."
-              : "Seu pedido já está na fila do Desenvolvedor e dos Capitães para confirmar sua patente e áreas."}
+              : "Seu pedido já está na fila do Desenvolvedor e dos Capitães para confirmar sua patente e funções por área."}
           </p>
           <div className="flex justify-center gap-2">
             <button

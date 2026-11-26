@@ -1,10 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { Archive, ExternalLink, FileSpreadsheet, FileText, FolderKanban, Plus, Search, Trash2 } from "lucide-react";
-import { canManageArea, getAreaName, ZEUS_AREAS } from "@/lib/domain";
+import {
+  Archive,
+  Edit3,
+  ExternalLink,
+  FileSpreadsheet,
+  FileText,
+  FolderKanban,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+} from "lucide-react";
+import { canManageArea, getAreaMeta, ZEUS_AREAS } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
-import type { ArchiveDocType } from "@/lib/types";
+import type { ArchiveDocType, ArchiveDocument } from "@/lib/types";
 import { AreaChip } from "./Badge";
 
 const DOC_TYPE_META: Record<ArchiveDocType, { label: string; badgeClass: string }> = {
@@ -16,7 +27,13 @@ const DOC_TYPE_META: Record<ArchiveDocType, { label: string; badgeClass: string 
 };
 
 export function ArchiveView() {
-  const { state, currentUser, addArchiveDocument, deleteArchiveDocument } = useZeus();
+  const {
+    state,
+    currentUser,
+    addArchiveDocument,
+    updateArchiveDocument,
+    deleteArchiveDocument,
+  } = useZeus();
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [areaFilter, setAreaFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | ArchiveDocType>("all");
@@ -30,6 +47,13 @@ export function ArchiveView() {
   const [externalUrl, setExternalUrl] = useState("");
   const [summary, setSummary] = useState("");
   const [impactedAreaIds, setImpactedAreaIds] = useState<string[]>([]);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editSummary, setEditSummary] = useState("");
+  const [editUrl, setEditUrl] = useState("");
+  const [editType, setEditType] = useState<ArchiveDocType>("relatorio");
+  const [editYear, setEditYear] = useState<number>(2026);
 
   const manageableAreas = ZEUS_AREAS.filter((a) => canManageArea(currentUser, a.id));
   const years = Array.from(
@@ -69,6 +93,15 @@ export function ArchiveView() {
     setShowForm(false);
   };
 
+  const startEdit = (doc: ArchiveDocument) => {
+    setEditingId(doc.id);
+    setEditTitle(doc.title);
+    setEditSummary(doc.summary);
+    setEditUrl(doc.externalUrl);
+    setEditType(doc.docType);
+    setEditYear(doc.seasonYear);
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -78,7 +111,7 @@ export function ArchiveView() {
             Acervo Histórico · Relatórios & Links (Teams / Drive)
           </h1>
           <p className="text-xs text-[var(--ink-subtle)]">
-            Banco central de relatórios antigos, planilhas e CADs por ano e área — cada conexão cadastrada também aparece no Grafo Obsidian.
+            Banco central de relatórios antigos, planilhas e CADs por ano e área — cada conexão cadastrada aparece ligada no Grafo Obsidian.
           </p>
         </div>
 
@@ -127,7 +160,7 @@ export function ArchiveView() {
           <option value="all">Todas as áreas</option>
           {ZEUS_AREAS.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name}
+              {a.shortCode} · {a.name}
             </option>
           ))}
         </select>
@@ -256,7 +289,9 @@ export function ArchiveView() {
         ) : (
           filtered.map((doc) => {
             const meta = DOC_TYPE_META[doc.docType];
-            const canDelete = canManageArea(currentUser, doc.areaId);
+            const areaMeta = getAreaMeta(doc.areaId);
+            const canEdit = canManageArea(currentUser, doc.areaId);
+            const isEditing = editingId === doc.id;
             const Icon =
               doc.docType === "planilha"
                 ? FileSpreadsheet
@@ -265,51 +300,134 @@ export function ArchiveView() {
                 : FileText;
 
             return (
-              <div key={doc.id} className="zeus-card rounded-xl p-4 space-y-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="rounded bg-blue-600/20 border border-blue-500/40 px-1.5 py-0.5 font-mono text-[10px] text-sky-400">
-                      {doc.seasonYear}
-                    </span>
-                    <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium ${meta.badgeClass}`}>
-                      <Icon className="h-3 w-3" /> {meta.label}
-                    </span>
-                    <span className="text-[11px] font-medium text-amber-400">
-                      {getAreaName(doc.areaId)}
-                    </span>
+              <div
+                key={doc.id}
+                className="zeus-card rounded-xl p-4 space-y-2.5"
+                style={{ borderLeftWidth: "3px", borderLeftColor: areaMeta.colorHex }}
+              >
+                {isEditing ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="w-full rounded border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 py-1 text-xs"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={editType}
+                        onChange={(e) => setEditType(e.target.value as ArchiveDocType)}
+                        className="rounded border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 py-1 text-xs"
+                      >
+                        {(Object.keys(DOC_TYPE_META) as ArchiveDocType[]).map((t) => (
+                          <option key={t} value={t}>
+                            {DOC_TYPE_META[t].label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        value={editYear}
+                        onChange={(e) => setEditYear(Number(e.target.value))}
+                        className="rounded border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 py-1 text-xs"
+                      />
+                    </div>
+                    <input
+                      type="url"
+                      value={editUrl}
+                      onChange={(e) => setEditUrl(e.target.value)}
+                      className="w-full rounded border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 py-1 text-xs"
+                    />
+                    <textarea
+                      rows={2}
+                      value={editSummary}
+                      onChange={(e) => setEditSummary(e.target.value)}
+                      className="w-full rounded border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2 py-1 text-xs"
+                    />
+                    <div className="flex justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className="rounded border border-[var(--hairline)] px-2 py-1 text-[11px]"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateArchiveDocument(doc.id, {
+                            title: editTitle.trim() || doc.title,
+                            summary: editSummary.trim(),
+                            externalUrl: editUrl.trim() || doc.externalUrl,
+                            docType: editType,
+                            seasonYear: editYear,
+                          });
+                          setEditingId(null);
+                        }}
+                        className="inline-flex items-center gap-1 rounded bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white"
+                      >
+                        <Save className="h-3 w-3" /> Salvar
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded bg-blue-600/20 border border-blue-500/40 px-1.5 py-0.5 font-mono text-[10px] text-sky-400">
+                          {doc.seasonYear}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium ${meta.badgeClass}`}
+                        >
+                          <Icon className="h-3 w-3" /> {meta.label}
+                        </span>
+                        <AreaChip areaId={doc.areaId} showName />
+                      </div>
 
-                  {canDelete && (
-                    <button
-                      onClick={() => deleteArchiveDocument(doc.id)}
-                      title="Remover do acervo"
-                      className="text-[var(--ink-subtle)] hover:text-rose-400"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
+                      {canEdit && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => startEdit(doc)}
+                            title="Editar documento"
+                            className="text-[var(--ink-subtle)] hover:text-sky-400"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => deleteArchiveDocument(doc.id)}
+                            title="Remover do acervo"
+                            className="text-[var(--ink-subtle)] hover:text-rose-400"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
-                <div className="text-sm font-semibold">{doc.title}</div>
-                {doc.summary && (
-                  <p className="text-xs text-[var(--ink-muted)] leading-relaxed">{doc.summary}</p>
+                    <div className="text-sm font-semibold">{doc.title}</div>
+                    {doc.summary && (
+                      <p className="text-xs text-[var(--ink-muted)] leading-relaxed">{doc.summary}</p>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--hairline)]">
+                      <div className="flex flex-wrap gap-1">
+                        {doc.impactedAreaIds.map((id) => (
+                          <AreaChip key={id} areaId={id} subtle />
+                        ))}
+                      </div>
+                      <a
+                        href={doc.externalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-sky-400 hover:underline"
+                      >
+                        Abrir documento <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
+                  </>
                 )}
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--hairline)]">
-                  <div className="flex flex-wrap gap-1">
-                    {doc.impactedAreaIds.map((id) => (
-                      <AreaChip key={id} areaId={id} subtle />
-                    ))}
-                  </div>
-                  <a
-                    href={doc.externalUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs font-medium text-sky-400 hover:underline"
-                  >
-                    Abrir documento <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
-                </div>
               </div>
             );
           })

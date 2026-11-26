@@ -3,14 +3,20 @@
 import React, { useEffect, useState } from "react";
 import {
   Archive,
+  Briefcase,
   Calendar,
   CalendarCheck2,
   ClipboardCheck,
+  Command,
+  DollarSign,
   FolderLock,
+  GitCommitHorizontal,
   LayoutDashboard,
   ListChecks,
+  Lock,
   LogOut,
   MapPin,
+  Megaphone,
   Moon,
   Network,
   PanelLeftClose,
@@ -22,7 +28,12 @@ import {
   Trophy,
   Zap,
 } from "lucide-react";
-import { canApproveAccounts, ROLE_META } from "@/lib/domain";
+import {
+  canAccessFinance,
+  canApproveAccounts,
+  getAreaMeta,
+  ROLE_META,
+} from "@/lib/domain";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useZeus } from "@/lib/store";
 import type { SeasonYear } from "@/lib/types";
@@ -34,11 +45,15 @@ export type NavTab =
   | "sprints"
   | "areas"
   | "graph"
+  | "revisoes"
   | "archive"
   | "flight"
   | "calendar"
   | "ranking"
   | "meetings"
+  | "financeiro"
+  | "marketing"
+  | "gestao"
   | "admin";
 
 const THEME_KEY = "zeus_theme";
@@ -48,11 +63,13 @@ export function AppShell({
   activeTab,
   onTabChange,
   onOpenProfile,
+  onOpenPalette,
   children,
 }: {
   activeTab: NavTab;
   onTabChange: (tab: NavTab) => void;
   onOpenProfile: (memberId: string) => void;
+  onOpenPalette: () => void;
   children: React.ReactNode;
 }) {
   const {
@@ -93,6 +110,7 @@ export function AppShell({
 
   const pendingCount = state.members.filter((m) => m.accountStatus === "pending").length;
   const isAdmin = canApproveAccounts(currentUser);
+  const hasFinanceAccess = canAccessFinance(currentUser);
 
   const platformNav: Array<{
     id: NavTab;
@@ -103,13 +121,46 @@ export function AppShell({
   }> = [
     { id: "dashboard", label: "Visão Geral", shortLabel: "Início", icon: LayoutDashboard },
     { id: "sprints", label: "Sprints", shortLabel: "Sprints", icon: ListChecks },
-    { id: "areas", label: "Áreas & Relatórios", shortLabel: "Áreas", icon: FolderLock },
+    { id: "areas", label: "Áreas Técnicas", shortLabel: "Áreas", icon: FolderLock },
     { id: "graph", label: "Grafo Obsidian", shortLabel: "Grafo", icon: Network },
+    { id: "revisoes", label: "Design Freeze", shortLabel: "Revisões", icon: GitCommitHorizontal },
     { id: "archive", label: "Acervo & Relatórios", shortLabel: "Acervo", icon: Archive },
     { id: "flight", label: "Voo & Lições SAE", shortLabel: "Voo", icon: ClipboardCheck },
     { id: "calendar", label: "Calendário", shortLabel: "Agenda", icon: Calendar },
     { id: "ranking", label: "Ranking & Perfis", shortLabel: "Ranking", icon: Trophy },
     { id: "meetings", label: "Reuniões", shortLabel: "Chamada", icon: CalendarCheck2 },
+  ];
+
+  const corporateNav: Array<{
+    id: NavTab;
+    areaId: string;
+    label: string;
+    shortLabel: string;
+    icon: React.ComponentType<{ className?: string }>;
+    locked?: boolean;
+  }> = [
+    {
+      id: "financeiro",
+      areaId: "financeiro",
+      label: "Financeiro",
+      shortLabel: "Fin.",
+      icon: DollarSign,
+      locked: !hasFinanceAccess,
+    },
+    {
+      id: "marketing",
+      areaId: "marketing",
+      label: "Marketing",
+      shortLabel: "Mkt",
+      icon: Megaphone,
+    },
+    {
+      id: "gestao",
+      areaId: "gestao",
+      label: "Gestão & OKRs",
+      shortLabel: "Gestão",
+      icon: Briefcase,
+    },
   ];
 
   const managementNav = isAdmin
@@ -124,10 +175,13 @@ export function AppShell({
       ]
     : [];
 
-  const allNav = [...platformNav, ...managementNav];
+  const allNav = [...platformNav, ...corporateNav, ...managementNav];
   const filteredPlatformNav = quickJump.trim()
     ? platformNav.filter((i) => i.label.toLowerCase().includes(quickJump.toLowerCase()))
     : platformNav;
+  const filteredCorporateNav = quickJump.trim()
+    ? corporateNav.filter((i) => i.label.toLowerCase().includes(quickJump.toLowerCase()))
+    : corporateNav;
   const filteredMgmtNav = quickJump.trim()
     ? managementNav.filter((i) => i.label.toLowerCase().includes(quickJump.toLowerCase()))
     : managementNav;
@@ -193,7 +247,7 @@ export function AppShell({
                 type="text"
                 value={quickJump}
                 onChange={(e) => setQuickJump(e.target.value)}
-                placeholder="Buscar aba..."
+                placeholder="Filtrar menu..."
                 className="w-full h-8 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] pl-8 pr-2.5 text-xs text-[var(--ink)] placeholder:text-[var(--ink-subtle)] focus:outline-none focus:border-blue-500/60"
               />
             </div>
@@ -201,10 +255,11 @@ export function AppShell({
         )}
 
         <nav className="flex-1 p-2.5 space-y-4 overflow-y-auto">
+          {/* Group 1: Engenharia & Plataforma */}
           <div className="space-y-1">
             {!collapsed && (
               <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
-                Plataforma
+                Engenharia & Sprints
               </div>
             )}
             {filteredPlatformNav.map((item) => {
@@ -216,7 +271,7 @@ export function AppShell({
                   title={item.label}
                   onClick={() => onTabChange(item.id)}
                   className={`zeus-btn w-full flex items-center ${
-                    collapsed ? "justify-center px-0 py-2.5" : "justify-between px-3 py-2"
+                    collapsed ? "justify-center px-0 py-2" : "justify-between px-3 py-1.5"
                   } rounded-lg text-[13px] font-medium border ${
                     active ? activeNavClass : inactiveNavClass
                   }`}
@@ -230,8 +285,58 @@ export function AppShell({
             })}
           </div>
 
+          {/* Group 2: Corporativo / Empresarial */}
+          {filteredCorporateNav.length > 0 && (
+            <div className="space-y-1 pt-2 border-t border-[var(--hairline)]">
+              {!collapsed && (
+                <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-amber-400/90">
+                  Corporativo / Empresarial
+                </div>
+              )}
+              {filteredCorporateNav.map((item) => {
+                const Icon = item.icon;
+                const active = activeTab === item.id;
+                const meta = getAreaMeta(item.areaId);
+                return (
+                  <button
+                    key={item.id}
+                    title={item.locked ? `${item.label} (Acesso restrito)` : item.label}
+                    onClick={() => onTabChange(item.id)}
+                    style={
+                      active
+                        ? {
+                            borderColor: `${meta.colorHex}aa`,
+                            backgroundColor: `${meta.colorHex}1c`,
+                            boxShadow: `inset 3px 0 0 0 ${meta.colorHex}`,
+                          }
+                        : undefined
+                    }
+                    className={`zeus-btn w-full flex items-center ${
+                      collapsed ? "justify-center px-0 py-2" : "justify-between px-3 py-1.5"
+                    } rounded-lg text-[13px] font-medium border ${
+                      active ? "text-[var(--ink)]" : inactiveNavClass
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: meta.colorHex }}
+                      />
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span className="truncate">{item.label}</span>}
+                    </span>
+                    {!collapsed && item.locked && (
+                      <Lock className="h-3 w-3 text-[var(--ink-subtle)] shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Group 3: Liderança */}
           {filteredMgmtNav.length > 0 && (
-            <div className="space-y-1">
+            <div className="space-y-1 pt-2 border-t border-[var(--hairline)]">
               {!collapsed && (
                 <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
                   Liderança
@@ -246,7 +351,7 @@ export function AppShell({
                     title={item.label}
                     onClick={() => onTabChange(item.id)}
                     className={`zeus-btn relative w-full flex items-center ${
-                      collapsed ? "justify-center px-0 py-2.5" : "justify-between px-3 py-2"
+                      collapsed ? "justify-center px-0 py-2" : "justify-between px-3 py-1.5"
                     } rounded-lg text-[13px] font-medium border ${
                       active ? activeNavClass : inactiveNavClass
                     }`}
@@ -291,7 +396,7 @@ export function AppShell({
 
           {!collapsed && (
             <div className="text-[11px] text-[var(--ink-subtle)] flex items-center justify-between px-1">
-              <span>{isSupabaseConfigured ? "Supabase ativo" : "Modo Local / Demo"}</span>
+              <span>{isSupabaseConfigured ? "Supabase Realtime" : "Modo Local / Demo"}</span>
               {isSupabaseConfigured ? (
                 <button
                   onClick={() => void signOut()}
@@ -360,6 +465,19 @@ export function AppShell({
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={onOpenPalette}
+              title="Busca rápida (Ctrl+K)"
+              className="zeus-btn h-8 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] px-2.5 text-xs text-[var(--ink-subtle)] hover:text-[var(--ink)] hover:border-blue-500/50 inline-flex items-center gap-1.5"
+            >
+              <Command className="h-3.5 w-3.5 text-sky-400" />
+              <span className="hidden lg:inline">Buscar</span>
+              <kbd className="hidden sm:inline rounded border border-[var(--hairline-strong)] px-1 font-mono text-[10px]">
+                Ctrl+K
+              </kbd>
+            </button>
+
+            <button
               onClick={toggleMyLabPresence}
               title="Marcar se você está na sala do laboratório agora"
               className={`zeus-btn h-8 rounded-md border px-2.5 text-xs font-medium inline-flex items-center gap-1.5 ${
@@ -426,7 +544,7 @@ export function AppShell({
             >
               <Icon className="h-4 w-4" />
               <span>{item.shortLabel}</span>
-              {item.badge ? (
+              {"badge" in item && item.badge ? (
                 <span className="absolute -top-0.5 right-1 h-3.5 min-w-3.5 rounded-full bg-amber-500 text-black px-1 text-[9px] font-bold flex items-center justify-center">
                   {item.badge}
                 </span>

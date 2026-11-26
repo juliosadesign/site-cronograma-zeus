@@ -1,30 +1,141 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Check, Send, UserPlus, X } from "lucide-react";
-import { canApproveAccounts, ROLE_META, ZEUS_AREAS } from "@/lib/domain";
+import { Bell, Check, Edit3, Plus, Save, Send, Trash2, UserPlus, X } from "lucide-react";
+import {
+  AREA_ROLE_META,
+  canApproveAccounts,
+  getAreaMeta,
+  ROLE_META,
+  ZEUS_AREAS,
+} from "@/lib/domain";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { useZeus } from "@/lib/store";
-import type { Member, Role } from "@/lib/types";
-import { RoleBadge } from "./Badge";
+import type { AreaMembership, AreaRole, Member, Role } from "@/lib/types";
+import { AreaRoleBadge, RoleBadge } from "./Badge";
+
+function MembershipEditor({
+  memberships,
+  onChange,
+}: {
+  memberships: AreaMembership[];
+  onChange: (next: AreaMembership[]) => void;
+}) {
+  const [areaId, setAreaId] = useState("aerodinamica");
+  const [role, setRole] = useState<AreaRole>("efetivado");
+
+  const addOrUpdate = () => {
+    const exists = memberships.some((m) => m.areaId === areaId);
+    if (exists) {
+      onChange(memberships.map((m) => (m.areaId === areaId ? { areaId, role } : m)));
+    } else {
+      onChange([...memberships, { areaId, role }]);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5">
+        <select
+          value={areaId}
+          onChange={(e) => setAreaId(e.target.value)}
+          className="sm:col-span-5 h-8 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-2 text-xs"
+        >
+          {ZEUS_AREAS.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.shortCode} · {a.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value as AreaRole)}
+          className="sm:col-span-4 h-8 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-2 text-xs"
+        >
+          <option value="calouro">Calouro</option>
+          <option value="efetivado">Efetivado</option>
+          <option value="diretor">Diretor da Área</option>
+        </select>
+        <button
+          type="button"
+          onClick={addOrUpdate}
+          className="sm:col-span-3 h-8 inline-flex items-center justify-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/15 px-2 text-xs font-semibold text-amber-400 hover:bg-amber-500/25"
+        >
+          <Plus className="h-3 w-3" /> Vincular
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {memberships.map((m) => {
+          const area = getAreaMeta(m.areaId);
+          return (
+            <span
+              key={m.areaId}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-2 py-1 text-[11px]"
+            >
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: area.colorHex }}
+              />
+              <span className="font-mono text-[10px]">{area.shortCode}</span>
+              <select
+                value={m.role}
+                onChange={(e) =>
+                  onChange(
+                    memberships.map((item) =>
+                      item.areaId === m.areaId ? { ...item, role: e.target.value as AreaRole } : item
+                    )
+                  )
+                }
+                className="bg-transparent text-[11px] font-medium focus:outline-none"
+              >
+                <option value="calouro" className="bg-zinc-900">Calouro</option>
+                <option value="efetivado" className="bg-zinc-900">Efetivado</option>
+                <option value="diretor" className="bg-zinc-900">Diretor</option>
+              </select>
+              {memberships.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => onChange(memberships.filter((x) => x.areaId !== m.areaId))}
+                  className="text-[var(--ink-subtle)] hover:text-rose-400"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function getInitialMemberships(member: Member): AreaMembership[] {
+  if (member.areaMemberships && member.areaMemberships.length > 0) {
+    return member.areaMemberships;
+  }
+  if (member.areaIds.length > 0) {
+    return member.areaIds.map((areaId) => ({
+      areaId,
+      role: member.directorAreaIds.includes(areaId)
+        ? "diretor"
+        : member.role === "calouro"
+        ? "calouro"
+        : "efetivado",
+    }));
+  }
+  return [{ areaId: "aerodinamica", role: "calouro" }];
+}
 
 function PendingReviewCard({ member }: { member: Member }) {
   const { reviewMemberAccount } = useZeus();
   const [role, setRole] = useState<Role>(member.requestedRole);
-  const [areaIds, setAreaIds] = useState<string[]>(member.areaIds);
-  const [directorAreaIds, setDirectorAreaIds] = useState<string[]>(member.directorAreaIds);
-
-  const toggleArea = (id: string) => {
-    setAreaIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
-
-  const toggleDirectorArea = (id: string) => {
-    setDirectorAreaIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  };
+  const [memberships, setMemberships] = useState<AreaMembership[]>(() =>
+    getInitialMemberships(member)
+  );
 
   return (
-    <div className="rounded-md border border-amber-500/35 bg-[var(--surface-2)]/60 p-3.5 space-y-3">
+    <div className="rounded-lg border border-amber-500/35 bg-[var(--surface-2)]/60 p-3.5 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-sm font-semibold">{member.fullName}</div>
@@ -39,69 +150,28 @@ function PendingReviewCard({ member }: { member: Member }) {
         >
           {(Object.keys(ROLE_META) as Role[]).map((r) => (
             <option key={r} value={r}>
-              Patente final: {ROLE_META[r].label}
+              Patente global: {ROLE_META[r].label}
             </option>
           ))}
         </select>
       </div>
 
       <div>
-        <div className="text-[11px] text-[var(--ink-subtle)] mb-1">Áreas liberadas (múltiplas):</div>
-        <div className="flex flex-wrap gap-1">
-          {ZEUS_AREAS.map((a) => {
-            const active = areaIds.includes(a.id);
-            return (
-              <button
-                type="button"
-                key={a.id}
-                onClick={() => toggleArea(a.id)}
-                className={`rounded border px-2 py-0.5 font-mono text-[10px] ${
-                  active
-                    ? "border-amber-500 bg-amber-500/15 text-amber-500"
-                    : "border-[var(--hairline)] text-[var(--ink-subtle)]"
-                }`}
-              >
-                {a.shortCode}
-              </button>
-            );
-          })}
+        <div className="text-[11px] text-[var(--ink-subtle)] mb-1.5">
+          Áreas e função em cada área:
         </div>
+        <MembershipEditor memberships={memberships} onChange={setMemberships} />
       </div>
-
-      {role === "diretor" && (
-        <div>
-          <div className="text-[11px] text-[var(--ink-subtle)] mb-1">Diretor de qual(is) área(s):</div>
-          <div className="flex flex-wrap gap-1">
-            {ZEUS_AREAS.filter((a) => areaIds.includes(a.id)).map((a) => {
-              const active = directorAreaIds.includes(a.id);
-              return (
-                <button
-                  type="button"
-                  key={a.id}
-                  onClick={() => toggleDirectorArea(a.id)}
-                  className={`rounded border px-2 py-0.5 font-mono text-[10px] ${
-                    active
-                      ? "border-indigo-500 bg-indigo-500/20 text-indigo-300"
-                      : "border-[var(--hairline)] text-[var(--ink-subtle)]"
-                  }`}
-                >
-                  {a.shortCode}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       <div className="flex justify-end gap-2">
         <button
+          type="button"
           onClick={() =>
             reviewMemberAccount({
               memberId: member.id,
               approved: false,
               role,
-              areaIds,
-              directorAreaIds,
+              areaMemberships: memberships,
             })
           }
           className="inline-flex items-center gap-1 rounded-md border border-rose-500/40 px-2.5 py-1 text-xs text-rose-400 hover:bg-rose-500/10"
@@ -109,13 +179,15 @@ function PendingReviewCard({ member }: { member: Member }) {
           <X className="h-3.5 w-3.5" /> Recusar
         </button>
         <button
+          type="button"
           onClick={() =>
             reviewMemberAccount({
               memberId: member.id,
               approved: true,
               role,
-              areaIds: areaIds.length ? areaIds : ["aerodinamica"],
-              directorAreaIds,
+              areaMemberships: memberships.length
+                ? memberships
+                : [{ areaId: "aerodinamica", role: "calouro" }],
             })
           }
           className="inline-flex items-center gap-1 rounded-md bg-emerald-500 px-3 py-1 text-xs font-semibold text-zinc-950 hover:bg-emerald-400"
@@ -127,13 +199,108 @@ function PendingReviewCard({ member }: { member: Member }) {
   );
 }
 
+function ApprovedMemberRow({ member }: { member: Member }) {
+  const { reviewMemberAccount } = useZeus();
+  const [editing, setEditing] = useState(false);
+  const [role, setRole] = useState<Role>(member.role);
+  const [memberships, setMemberships] = useState<AreaMembership[]>(() =>
+    getInitialMemberships(member)
+  );
+
+  return (
+    <div className="py-3 space-y-2.5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium">{member.fullName}</span>
+            <RoleBadge role={member.role} />
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {getInitialMemberships(member).map((m) => (
+              <AreaRoleBadge key={m.areaId} areaId={m.areaId} role={m.role} />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setRole(member.role);
+              setMemberships(getInitialMemberships(member));
+              setEditing((v) => !v);
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] hover:border-blue-500/50"
+          >
+            <Edit3 className="h-3 w-3" /> {editing ? "Fechar" : "Editar vínculos"}
+          </button>
+        </div>
+      </div>
+
+      {editing && (
+        <div className="rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-2)]/70 p-3 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] text-[var(--ink-subtle)]">
+              Patente global & papéis individuais por área ({Object.values(AREA_ROLE_META).map((v) => v.label).join(" / ")}):
+            </span>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as Role)}
+              className="h-7 rounded-md border border-[var(--hairline)] bg-[var(--surface-1)] px-2 text-xs"
+            >
+              {(Object.keys(ROLE_META) as Role[]).map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_META[r].label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <MembershipEditor memberships={memberships} onChange={setMemberships} />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="rounded-md border border-[var(--hairline)] px-2.5 py-1 text-xs"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                reviewMemberAccount({
+                  memberId: member.id,
+                  approved: true,
+                  role,
+                  areaMemberships: memberships,
+                });
+                setEditing(false);
+              }}
+              className="inline-flex items-center gap-1 rounded-md bg-blue-600 hover:bg-blue-500 px-3 py-1 text-xs font-semibold text-white"
+            >
+              <Save className="h-3 w-3" /> Salvar permissões
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdminView() {
-  const { state, currentUser, simulateSignup, reviewMemberAccount, updateNotificationConfig } =
-    useZeus();
+  const {
+    state,
+    currentUser,
+    simulateSignup,
+    updateNotificationConfig,
+    saveNotificationConfigRemote,
+    sendTestNotification,
+  } = useZeus();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [requestedRole, setRequestedRole] = useState<Role>("calouro");
-  const [signupAreas, setSignupAreas] = useState<string[]>(["aerodinamica"]);
+  const [signupMemberships, setSignupMemberships] = useState<AreaMembership[]>([
+    { areaId: "aerodinamica", role: "calouro" },
+  ]);
   const [notifyStatus, setNotifyStatus] = useState<string | null>(null);
   const [sendingTest, setSendingTest] = useState(false);
 
@@ -155,7 +322,7 @@ export function AdminView() {
       fullName: fullName.trim(),
       email: email.trim(),
       requestedRole,
-      areaIds: signupAreas,
+      areaMemberships: signupMemberships,
     });
     setFullName("");
     setEmail("");
@@ -166,7 +333,7 @@ export function AdminView() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Gestão de Contas, Patentes & Áreas</h1>
         <p className="text-xs text-[var(--ink-subtle)]">
-          Somente Desenvolvedor, Capitão e Co-Capitão aprovam cadastros e definem o nível de poder de cada membro.
+          Defina patentes globais e múltiplos papéis por área (ex.: Diretor em uma área e Efetivado em outra).
         </p>
       </div>
 
@@ -188,123 +355,70 @@ export function AdminView() {
         )}
       </section>
 
-      {/* Simulate Signup */}
-      <section className="zeus-card rounded-lg p-4 space-y-3">
-        <h2 className="text-sm font-semibold flex items-center gap-2">
-          <UserPlus className="h-4 w-4 text-amber-500" />
-          Simular Novo Cadastro (fluxo de entrada)
-        </h2>
-        <form onSubmit={handleSimulate} className="space-y-2.5">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <input
-              type="text"
-              placeholder="Nome completo do novo membro"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
-            />
-            <input
-              type="email"
-              placeholder="E-mail (@uema.br ou pessoal)"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
-            />
-            <select
-              value={requestedRole}
-              onChange={(e) => setRequestedRole(e.target.value as Role)}
-              className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
+      {/* Simulate Signup (Local Demo Only) */}
+      {!isSupabaseConfigured && (
+        <section className="zeus-card rounded-lg p-4 space-y-3">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <UserPlus className="h-4 w-4 text-amber-500" />
+            Simular Novo Cadastro (Modo Demo Local)
+          </h2>
+          <form onSubmit={handleSimulate} className="space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <input
+                type="text"
+                placeholder="Nome completo do novo membro"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
+              />
+              <input
+                type="email"
+                placeholder="E-mail (@uema.br ou pessoal)"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
+              />
+              <select
+                value={requestedRole}
+                onChange={(e) => setRequestedRole(e.target.value as Role)}
+                className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
+              >
+                <option value="calouro">Solicita: Calouro</option>
+                <option value="efetivado">Solicita: Efetivado</option>
+                <option value="diretor">Solicita: Diretor</option>
+              </select>
+            </div>
+            <MembershipEditor memberships={signupMemberships} onChange={setSignupMemberships} />
+            <button
+              type="submit"
+              className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-zinc-950"
             >
-              <option value="calouro">Solicita: Calouro</option>
-              <option value="efetivado">Solicita: Efetivado</option>
-              <option value="diretor">Solicita: Diretor</option>
-            </select>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-[var(--ink-subtle)] mr-1">Áreas escolhidas ao entrar:</span>
-            {ZEUS_AREAS.map((a) => {
-              const active = signupAreas.includes(a.id);
-              return (
-                <button
-                  type="button"
-                  key={a.id}
-                  onClick={() =>
-                    setSignupAreas((prev) =>
-                      prev.includes(a.id) ? prev.filter((x) => x !== a.id) : [...prev, a.id]
-                    )
-                  }
-                  className={`rounded border px-2 py-0.5 font-mono text-[10px] ${
-                    active
-                      ? "border-amber-500 bg-amber-500/15 text-amber-500"
-                      : "border-[var(--hairline)] text-[var(--ink-subtle)]"
-                  }`}
-                >
-                  {a.shortCode}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            type="submit"
-            className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-zinc-950"
-          >
-            Enviar para fila de aprovação
-          </button>
-        </form>
-      </section>
+              Enviar para fila de aprovação
+            </button>
+          </form>
+        </section>
+      )}
 
-      {/* Approved Members Role Quick Edit */}
-      <section className="zeus-card rounded-lg p-4 space-y-3">
+      {/* Approved Members Full Role + Multi-Area Edit */}
+      <section className="zeus-card rounded-lg p-4 space-y-2">
         <h2 className="text-sm font-semibold">Membros Aprovados ({approved.length})</h2>
         <div className="divide-y divide-[var(--hairline)]">
           {approved.map((m) => (
-            <div
-              key={m.id}
-              className="py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium">{m.fullName}</span>
-                <RoleBadge role={m.role} />
-              </div>
-              <select
-                value={m.role}
-                onChange={(e) =>
-                  reviewMemberAccount({
-                    memberId: m.id,
-                    approved: true,
-                    role: e.target.value as Role,
-                    areaIds: m.areaIds,
-                    directorAreaIds:
-                      e.target.value === "diretor"
-                        ? m.directorAreaIds.length
-                          ? m.directorAreaIds
-                          : [m.areaIds[0] ?? "aerodinamica"]
-                        : [],
-                  })
-                }
-                className="h-7 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] px-2 text-xs"
-              >
-                {(Object.keys(ROLE_META) as Role[]).map((r) => (
-                  <option key={r} value={r}>
-                    {ROLE_META[r].label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <ApprovedMemberRow key={m.id} member={m} />
           ))}
         </div>
       </section>
 
-      {/* Notifications & Bots (V2) */}
+      {/* Notifications & Bots (V3 Persisted + Protected) */}
       <section className="zeus-card rounded-xl p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-semibold flex items-center gap-2">
               <Bell className="h-4 w-4 text-amber-500" />
-              Notificações Automáticas (PWA + Discord / Telegram)
+              Notificações Automáticas (Discord / Telegram + Push)
             </h2>
             <p className="text-xs text-[var(--ink-subtle)]">
-              Canais oficiais gratuitos para avisar a equipe sobre sprints, validações e reuniões quinzenais sem risco ao WhatsApp.
+              Configuração salva com acesso restrito à liderança e disparada via API autenticada.
             </p>
           </div>
           <button
@@ -339,7 +453,7 @@ export function AdminView() {
             className="rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs"
           />
           <input
-            type="text"
+            type="password"
             placeholder="Telegram Bot Token (opcional)"
             value={state.notificationConfig.telegramBotToken ?? ""}
             onChange={(e) => updateNotificationConfig({ telegramBotToken: e.target.value })}
@@ -354,24 +468,55 @@ export function AdminView() {
           />
         </div>
 
+        <div className="flex flex-wrap items-center gap-4 text-xs text-[var(--ink-muted)]">
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={Boolean(state.notificationConfig.autoNotifyAnnouncements)}
+              onChange={(e) =>
+                updateNotificationConfig({ autoNotifyAnnouncements: e.target.checked })
+              }
+            />
+            Disparar em avisos fixados
+          </label>
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={Boolean(state.notificationConfig.autoNotifyApprovals)}
+              onChange={(e) =>
+                updateNotificationConfig({ autoNotifyApprovals: e.target.checked })
+              }
+            />
+            Disparar em aprovações na Reunião
+          </label>
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={Boolean(state.notificationConfig.autoNotifyBlockers)}
+              onChange={(e) =>
+                updateNotificationConfig({ autoNotifyBlockers: e.target.checked })
+              }
+            />
+            Disparar em bloqueios de Sprint
+          </label>
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void saveNotificationConfigRemote(state.notificationConfig)}
+            className="zeus-btn inline-flex items-center gap-1 rounded-md bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            <Save className="h-3 w-3" /> Salvar Config no Banco
+          </button>
+
           <button
             type="button"
             disabled={sendingTest}
             onClick={async () => {
               setSendingTest(true);
               setNotifyStatus(null);
-              const res = await fetch("/api/notify", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  channel: "discord",
-                  webhookUrl: state.notificationConfig.discordWebhookUrl,
-                  title: "Teste Zeus AeroDesign",
-                  message: "Integração de avisos da Sprint conectada com sucesso!",
-                }),
-              });
-              const data = (await res.json()) as { ok: boolean; error?: string };
+              const data = await sendTestNotification("discord", state.notificationConfig);
               setNotifyStatus(data.ok ? "Enviado para o Discord!" : data.error ?? "Falha no envio.");
               setSendingTest(false);
             }}
@@ -386,18 +531,7 @@ export function AdminView() {
             onClick={async () => {
               setSendingTest(true);
               setNotifyStatus(null);
-              const res = await fetch("/api/notify", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  channel: "telegram",
-                  botToken: state.notificationConfig.telegramBotToken,
-                  chatId: state.notificationConfig.telegramChatId,
-                  title: "Teste Zeus AeroDesign",
-                  message: "Integração de avisos da Sprint conectada com sucesso!",
-                }),
-              });
-              const data = (await res.json()) as { ok: boolean; error?: string };
+              const data = await sendTestNotification("telegram", state.notificationConfig);
               setNotifyStatus(data.ok ? "Enviado para o Telegram!" : data.error ?? "Falha no envio.");
               setSendingTest(false);
             }}

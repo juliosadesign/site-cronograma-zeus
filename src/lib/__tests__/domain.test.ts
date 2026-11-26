@@ -1,31 +1,45 @@
 import assert from "node:assert/strict";
 import {
+  canAccessFinance,
   canApproveAccounts,
   canApproveInMeeting,
   canManageArea,
   canUpdateTaskStatus,
   canViewPrivateArea,
+  computeAreaGraphEdges,
   computeAttendanceStats,
   computeConceptVoteTally,
   computeDaysUntil,
+  computeFinanceSummary,
   computeFlightReadiness,
   computeForecastTarget,
   computeMemberPoints,
   computeProjectedReportScore,
   computeReportPercentage,
   computeTeamReportPercentage,
-  computeAreaGraphEdges,
+  CORPORATE_AREAS,
   evaluateScheduleHealth,
+  getAreaMeta,
   getInitials,
+  getMemberAreaRole,
   getMemberLabStatus,
+  getReportOverride,
+  getReportOverrideKey,
   isDateInPeriod,
   isWithinLabSlots,
   projectTeamProgressAt,
+  TECHNICAL_AREAS,
   ZEUS_AREAS,
 } from "../domain.ts";
-import type { Member, MeetingAttendance, ReportSection, SprintTask } from "../types.ts";
+import type { FinancialTransaction, Member, MeetingAttendance, ReportSection, SprintTask } from "../types.ts";
 
 assert.equal(ZEUS_AREAS.length, 11, "Deve conter exatamente 11 áreas da Zeus AeroDesign");
+assert.equal(TECHNICAL_AREAS.length, 8, "Devem existir 8 áreas técnicas");
+assert.equal(CORPORATE_AREAS.length, 3, "Devem existir 3 áreas corporativas (MKT, GEST, FIN)");
+
+const uniqueColors = new Set(ZEUS_AREAS.map((a) => a.colorHex));
+assert.equal(uniqueColors.size, 11, "Cada uma das 11 áreas deve possuir uma cor única");
+assert.equal(getAreaMeta("financeiro").colorHex, "#a3e635");
 
 const dev: Member = {
   id: "dev",
@@ -41,8 +55,37 @@ const dev: Member = {
 };
 
 const capitao: Member = { ...dev, id: "cap", role: "capitao", areaIds: ["gestao"] };
-const diretorAero: Member = { ...dev, id: "dir", role: "diretor", areaIds: ["aerodinamica", "desempenho"], directorAreaIds: ["aerodinamica"] };
+const diretorAero: Member = {
+  ...dev,
+  id: "dir",
+  role: "diretor",
+  areaIds: ["aerodinamica", "desempenho"],
+  directorAreaIds: ["aerodinamica"],
+  areaMemberships: [
+    { areaId: "aerodinamica", role: "diretor" },
+    { areaId: "desempenho", role: "efetivado" },
+  ],
+};
+const multiRoleMember: Member = {
+  ...dev,
+  id: "multi",
+  role: "efetivado",
+  areaIds: ["estruturas", "marketing"],
+  directorAreaIds: ["estruturas"],
+  areaMemberships: [
+    { areaId: "estruturas", role: "diretor" },
+    { areaId: "marketing", role: "efetivado" },
+  ],
+};
 const calouroAero: Member = { ...dev, id: "cal", role: "calouro", areaIds: ["aerodinamica"], directorAreaIds: [] };
+const finMember: Member = {
+  ...dev,
+  id: "fin",
+  role: "efetivado",
+  areaIds: ["financeiro"],
+  directorAreaIds: [],
+  areaMemberships: [{ areaId: "financeiro", role: "efetivado" }],
+};
 
 // RBAC: Desenvolvedor & Capitão têm acesso total e aprovam contas/reuniões
 assert.equal(canApproveAccounts(dev), true);
@@ -50,18 +93,27 @@ assert.equal(canApproveInMeeting(dev), true);
 assert.equal(canViewPrivateArea(dev, "financeiro"), true);
 assert.equal(canManageArea(dev, "estruturas"), true);
 assert.equal(canApproveAccounts(capitao), true);
+assert.equal(canAccessFinance(dev), true);
 
-// RBAC: Diretor gerencia somente área onde é diretor, vê privado apenas das áreas onde participa
+// RBAC: Diretor + multi-papel por área
 assert.equal(canApproveAccounts(diretorAero), false);
 assert.equal(canApproveInMeeting(diretorAero), false);
 assert.equal(canManageArea(diretorAero, "aerodinamica"), true);
 assert.equal(canManageArea(diretorAero, "desempenho"), false);
 assert.equal(canViewPrivateArea(diretorAero, "desempenho"), true);
 assert.equal(canViewPrivateArea(diretorAero, "estruturas"), false);
+assert.equal(getMemberAreaRole(diretorAero, "aerodinamica"), "diretor");
+assert.equal(getMemberAreaRole(diretorAero, "desempenho"), "efetivado");
+
+assert.equal(canManageArea(multiRoleMember, "estruturas"), true, "Diretor em estruturas mesmo com patente global efetivado");
+assert.equal(canManageArea(multiRoleMember, "marketing"), false, "Apenas efetivado em marketing");
+assert.equal(canAccessFinance(multiRoleMember), false, "Sem acesso ao Financeiro");
+assert.equal(canAccessFinance(finMember), true, "Membro do Financeiro acessa Financeiro");
 
 // RBAC: Calouro vê privado apenas da própria área
 assert.equal(canViewPrivateArea(calouroAero, "aerodinamica"), true);
 assert.equal(canViewPrivateArea(calouroAero, "financeiro"), false);
+assert.equal(canAccessFinance(calouroAero), false);
 
 // Ranking ponderado: somente tarefas com meetingApproved === true contam pontos
 const tasks: SprintTask[] = [
@@ -85,7 +137,7 @@ assert.equal(computeMemberPoints("cal", tasks), 6, "4 (crítica) + 2 (média) = 
 assert.equal(canUpdateTaskStatus(calouroAero, tasks[0]), true);
 assert.equal(canUpdateTaskStatus(diretorAero, tasks[0]), true);
 
-// Relatórios: cálculo automático e override manual
+// Relatórios: cálculo automático e override manual isolado por temporada
 const sections: ReportSection[] = [
   { id: "r1", seasonYear: 2026, areaId: "aerodinamica", title: "1", completed: true, impactedAreaIds: [] },
   { id: "r2", seasonYear: 2026, areaId: "aerodinamica", title: "2", completed: true, impactedAreaIds: [] },
@@ -96,11 +148,27 @@ assert.equal(computeReportPercentage("aerodinamica", sections, 85), 85);
 assert.equal(computeReportPercentage("estruturas", sections), 0);
 
 const teamReport = computeTeamReportPercentage(
-  ZEUS_AREAS.slice(0, 2),
+  TECHNICAL_AREAS.slice(0, 2),
   sections,
-  { cargas: 50 }
+  { [getReportOverrideKey(2026, "cargas")]: 50 },
+  2026
 );
 assert.equal(teamReport.teamPercentage, 59, "Média entre 67% e 50% arredonda para 59%");
+assert.equal(getReportOverride({ "2026:cargas": 50 }, 2027, "cargas"), null, "Override de 2026 não deve vazar para 2027");
+
+// Financeiro summary
+const txs: FinancialTransaction[] = [
+  { id: "f1", seasonYear: 2026, kind: "income", status: "paid", category: "Patrocínio", description: "A", amountCents: 500000, transactionDate: "2026-03-01", createdAt: "2026-03-01" },
+  { id: "f2", seasonYear: 2026, kind: "expense", status: "paid", category: "Compósitos", areaId: "estruturas", description: "B", amountCents: 180000, transactionDate: "2026-03-05", createdAt: "2026-03-05" },
+  { id: "f3", seasonYear: 2026, kind: "expense", status: "pending", category: "Elétrica", areaId: "eletrico", description: "C", amountCents: 60000, transactionDate: "2026-03-10", createdAt: "2026-03-10" },
+];
+assert.deepEqual(computeFinanceSummary(txs), {
+  incomePaidCents: 500000,
+  expensePaidCents: 180000,
+  balanceCents: 320000,
+  pendingIncomeCents: 0,
+  pendingExpenseCents: 60000,
+});
 
 // Presença
 const att: MeetingAttendance[] = [

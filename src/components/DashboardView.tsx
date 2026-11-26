@@ -2,17 +2,19 @@
 
 import { useEffect, useState } from "react";
 import {
+  AlertOctagon,
   AlertTriangle,
   ArrowRight,
   BarChart3,
+  Briefcase,
   Calendar,
-  CalendarCheck,
-  CheckCircle2,
+  Cpu,
   FileText,
   Filter,
   Flame,
   MapPin,
   Megaphone,
+  Palette,
   Pin,
   Plane,
   Plus,
@@ -24,9 +26,12 @@ import {
   computeDaysUntil,
   computeFlightReadiness,
   computeTeamReportPercentage,
+  CORPORATE_AREAS,
   evaluateScheduleHealth,
+  getAreaMeta,
   getMemberLabStatus,
   isDateInPeriod,
+  TECHNICAL_AREAS,
   ZEUS_AREAS,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
@@ -84,6 +89,7 @@ export function DashboardView({
     : [];
   const approvedInSprint = activeTasks.filter((t) => t.meetingApproved).length;
   const awaitingMeeting = activeTasks.filter((t) => t.directorValidated && !t.meetingApproved).length;
+  const blockedTasks = activeTasks.filter((t) => Boolean(t.blockedByAreaId || t.blockedReason));
 
   const greenCount = activeTasks.filter((t) => t.status === "green").length;
   const yellowCount = activeTasks.filter((t) => t.status === "yellow").length;
@@ -95,18 +101,25 @@ export function DashboardView({
   const seasonMeetings = state.meetings.filter(
     (m) => m.seasonYear === state.activeSeason && isDateInPeriod(m.date, periodFilter)
   );
+  const seasonMeetingIds = new Set(seasonMeetings.map((m) => m.id));
+  const seasonAttendance = state.attendance.filter((a) => seasonMeetingIds.has(a.meetingId));
+
   const seasonAnnouncements = state.announcements.filter(
     (a) => a.seasonYear === state.activeSeason && isDateInPeriod(a.createdAt, periodFilter)
   );
 
+  // Compute SAE Technical Report % strictly over the 8 Technical Areas (Corporate stays separated)
   const { teamPercentage, byArea } = computeTeamReportPercentage(
-    ZEUS_AREAS,
+    TECHNICAL_AREAS,
     seasonReports,
-    state.reportOverrides
+    state.reportOverrides,
+    state.activeSeason
   );
-  const flightReadiness = computeFlightReadiness(state.flightChecklist);
+
+  const seasonChecklist = state.flightChecklist.filter((f) => f.seasonYear === state.activeSeason);
+  const flightReadiness = computeFlightReadiness(seasonChecklist);
   const unresolvedCriticalLessons = state.competitionLessons.filter(
-    (l) => !l.resolved && l.severity === "critico"
+    (l) => l.seasonYear === state.activeSeason && !l.resolved && l.severity === "critico"
   ).length;
 
   const approvedMembers = state.members.filter((m) => m.accountStatus === "approved");
@@ -125,33 +138,47 @@ export function DashboardView({
     daysUntilComp !== null ? evaluateScheduleHealth(teamPercentage, daysUntilComp) : null;
 
   const avgAttendanceRate =
-    approvedMembers.length === 0
+    approvedMembers.length === 0 || seasonMeetings.length === 0
       ? 0
       : Math.round(
           approvedMembers.reduce(
-            (sum, m) => sum + computeAttendanceStats(m.id, state.attendance).rate,
+            (sum, m) => sum + computeAttendanceStats(m.id, seasonAttendance).rate,
             0
           ) / approvedMembers.length
         );
 
-  const heatmapRows = byArea.map((item) => {
-    const areaTasks = activeTasks.filter((t) => t.areaId === item.areaId);
+  // Real computed sparkline series from season sprints & meetings
+  const sprintApprovalSeries = [...fallbackSeasonSprints]
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))
+    .map((sp) => state.tasks.filter((t) => t.sprintId === sp.id && t.meetingApproved).length);
+  const attendanceSeries = [...seasonMeetings]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((mt) => {
+      const recs = seasonAttendance.filter((a) => a.meetingId === mt.id);
+      if (recs.length === 0) return 0;
+      const present = recs.filter((a) => a.status === "present").length;
+      return Math.round((present / recs.length) * 100);
+    });
+
+  const heatmapRows = ZEUS_AREAS.map((area) => {
+    const areaReport = byArea.find((b) => b.areaId === area.id);
+    const areaTasks = activeTasks.filter((t) => t.areaId === area.id);
     const sprintPct =
       areaTasks.length === 0
-        ? item.percentage
+        ? (areaReport?.percentage ?? 0)
         : Math.round(
             (areaTasks.filter((t) => t.status === "green").length / areaTasks.length) * 100
           );
     const linksCount =
       seasonReports.filter(
-        (r) => r.areaId === item.areaId || r.impactedAreaIds.includes(item.areaId)
+        (r) => r.areaId === area.id || r.impactedAreaIds.includes(area.id)
       ).length +
       seasonTasks.filter(
-        (t) => t.areaId === item.areaId || t.impactedAreaIds.includes(item.areaId)
+        (t) => t.areaId === area.id || t.impactedAreaIds.includes(area.id)
       ).length;
     return {
-      areaId: item.areaId,
-      reportPct: item.percentage,
+      areaId: area.id,
+      reportPct: areaReport?.percentage ?? sprintPct,
       sprintPct,
       linksCount,
     };
@@ -217,7 +244,7 @@ export function DashboardView({
         </div>
       </div>
 
-      {/* Period Filter Bar for Retrospective / Snapshot Presentation */}
+      {/* Period Filter Bar */}
       <div className="zeus-card rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs text-[var(--ink-subtle)]">
           <Filter className="h-3.5 w-3.5 text-blue-400" />
@@ -247,6 +274,37 @@ export function DashboardView({
           ))}
         </div>
       </div>
+
+      {/* Active Sprint Blockers Alert */}
+      {blockedTasks.length > 0 && (
+        <div className="zeus-card rounded-xl p-3.5 border-rose-500/45 bg-rose-500/8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+          <div className="flex items-start gap-2.5">
+            <AlertOctagon className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-rose-300">
+                {blockedTasks.length} entrega(s) bloqueada(s) na Sprint atual
+              </div>
+              <div className="flex flex-wrap gap-2 text-[11px] text-[var(--ink-muted)]">
+                {blockedTasks.map((bt) => (
+                  <span key={bt.id} className="inline-flex items-center gap-1.5">
+                    <AreaChip areaId={bt.areaId} />
+                    <span>→ aguarda</span>
+                    {bt.blockedByAreaId && <AreaChip areaId={bt.blockedByAreaId} />}
+                    <span className="truncate max-w-[220px]">({bt.title})</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate("sprints")}
+            className="self-start sm:self-center rounded-md border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[11px] font-medium text-rose-300 hover:bg-rose-500/25 shrink-0"
+          >
+            Resolver bloqueios
+          </button>
+        </div>
+      )}
 
       {/* Top 4 Executive KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -289,7 +347,7 @@ export function DashboardView({
 
         <div className="zeus-card rounded-xl p-4 flex items-center justify-between gap-3">
           <div>
-            <div className="text-xs text-[var(--ink-subtle)]">Relatório Geral da Equipe</div>
+            <div className="text-xs text-[var(--ink-subtle)]">Relatório Técnico (8 áreas)</div>
             <div className="mt-2 text-2xl font-semibold font-mono text-amber-400">
               {teamPercentage}%
             </div>
@@ -313,7 +371,10 @@ export function DashboardView({
             </div>
             <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">Oficializadas na reunião</div>
           </div>
-          <MiniSparkline values={[1, 2, 2, Math.max(1, approvedInSprint + awaitingMeeting)]} color="#10b981" />
+          <MiniSparkline
+            values={sprintApprovalSeries.length >= 2 ? sprintApprovalSeries : [0, approvedInSprint]}
+            color="#10b981"
+          />
         </div>
 
         <div className="zeus-card rounded-xl p-4 flex items-center justify-between gap-2">
@@ -327,7 +388,10 @@ export function DashboardView({
             </div>
             <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">Frequência média</div>
           </div>
-          <MiniSparkline values={[78, 82, 85, avgAttendanceRate || 80]} color="#38bdf8" />
+          <MiniSparkline
+            values={attendanceSeries.length >= 2 ? attendanceSeries : [0, avgAttendanceRate]}
+            color="#38bdf8"
+          />
         </div>
       </div>
 
@@ -366,7 +430,13 @@ export function DashboardView({
               <FileText className="h-3.5 w-3.5" /> Abrir Áreas
             </button>
           </div>
-          <AreaHealthHeatmap rows={heatmapRows} onSelectArea={() => onNavigate("areas")} />
+          <AreaHealthHeatmap
+            rows={heatmapRows}
+            onSelectArea={(areaId) => {
+              const meta = getAreaMeta(areaId);
+              onNavigate(meta.category === "corporate" ? (areaId as NavTab) : "areas");
+            }}
+          />
         </section>
 
         <div className="space-y-4">
@@ -374,11 +444,11 @@ export function DashboardView({
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold flex items-center gap-1.5">
                 <BarChart3 className="h-4 w-4 text-blue-500" />
-                Top Relatórios
+                Top Relatórios Técnicos
               </h2>
               <span className="font-mono text-[10px] text-amber-400">Média {teamPercentage}%</span>
             </div>
-            <ReportsBarChart items={byArea} teamAverage={teamPercentage} />
+            <ReportsBarChart items={byArea} />
           </section>
 
           <section className="zeus-card rounded-xl p-4 space-y-3">
@@ -536,14 +606,95 @@ export function DashboardView({
               );
             })}
           </div>
-
-          <div className="pt-1 flex flex-wrap gap-1">
-            {ZEUS_AREAS.map((a) => (
-              <AreaChip key={a.id} areaId={a.id} subtle />
-            ))}
-          </div>
         </section>
       </div>
+
+      {/* Row 4: Mapa de Cores das Áreas (Guia visual permanente para novos membros) */}
+      <section className="zeus-card rounded-xl p-4 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <Palette className="h-4 w-4 text-sky-400" />
+              Mapa de Cores das Áreas · Guia Visual da Equipe
+            </h2>
+            <p className="text-[11px] text-[var(--ink-subtle)]">
+              Cada cor identifica instantaneamente a área responsável nas Sprints, no Grafo Obsidian, no Acervo e nos Relatórios.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 space-y-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)] flex items-center gap-1.5">
+              <Cpu className="h-3.5 w-3.5 text-sky-400" />
+              Áreas Técnicas SAE ({TECHNICAL_AREAS.length})
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {TECHNICAL_AREAS.map((area) => (
+                <button
+                  key={area.id}
+                  type="button"
+                  onClick={() => onNavigate("areas")}
+                  className="zeus-card-interactive text-left rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/60 p-2.5 space-y-1"
+                  style={{ borderLeftWidth: "3px", borderLeftColor: area.colorHex }}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span
+                      className="font-mono text-[10px] font-bold"
+                      style={{ color: area.colorHex }}
+                    >
+                      {area.shortCode}
+                    </span>
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: area.colorHex }}
+                    />
+                  </div>
+                  <div className="text-xs font-medium truncate">{area.name}</div>
+                  <div className="text-[10px] text-[var(--ink-subtle)] line-clamp-2">
+                    {area.description}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-400/90 flex items-center gap-1.5">
+              <Briefcase className="h-3.5 w-3.5 text-amber-400" />
+              Divisão Corporativa / Empresarial ({CORPORATE_AREAS.length})
+            </div>
+            <div className="space-y-2">
+              {CORPORATE_AREAS.map((area) => (
+                <button
+                  key={area.id}
+                  type="button"
+                  onClick={() => onNavigate(area.id as NavTab)}
+                  className="zeus-card-interactive w-full text-left rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/60 p-2.5 flex items-start gap-2.5"
+                  style={{ borderLeftWidth: "3px", borderLeftColor: area.colorHex }}
+                >
+                  <span
+                    className="h-3 w-3 rounded-full shrink-0 mt-0.5"
+                    style={{ backgroundColor: area.colorHex }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xs font-semibold">{area.name}</span>
+                      <span
+                        className="font-mono text-[10px] font-bold"
+                        style={{ color: area.colorHex }}
+                      >
+                        {area.shortCode}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-[var(--ink-subtle)]">{area.description}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

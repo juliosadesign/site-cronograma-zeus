@@ -6,10 +6,11 @@ import {
   computeAttendanceStats,
   computeMemberPoints,
   getAreaName,
+  getMemberAreaRole,
   isTopLeadership,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
-import { PriorityBadge, RoleBadge, StatusBadge } from "./Badge";
+import { AreaRoleBadge, PriorityBadge, RoleBadge, StatusBadge } from "./Badge";
 import { MemberAvatar } from "./MemberAvatar";
 
 function resizeImageToDataUrl(file: File): Promise<string> {
@@ -317,17 +318,12 @@ export function MemberProfileModal({
           )}
         </div>
 
-        {/* Areas */}
+        {/* Areas with per-area roles */}
         <div className="flex flex-wrap gap-1.5">
-          {member.areaIds.map((id) => (
-            <span
-              key={id}
-              className="rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px]"
-            >
-              {getAreaName(id)}
-              {member.directorAreaIds.includes(id) ? " · Diretor" : ""}
-            </span>
-          ))}
+          {member.areaIds.map((id) => {
+            const areaRole = getMemberAreaRole(member, id) ?? "efetivado";
+            return <AreaRoleBadge key={id} areaId={id} role={areaRole} />;
+          })}
         </div>
 
         {/* KPIs */}

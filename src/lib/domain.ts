@@ -2,7 +2,9 @@ import type {
   AircraftConcept,
   ArchiveDocument,
   Area,
+  AreaRole,
   CompetitionLesson,
+  FinancialTransaction,
   FlightChecklistItem,
   LabSlot,
   MeetingAttendance,
@@ -16,18 +18,157 @@ import type {
 } from "./types";
 
 export const ZEUS_AREAS: Area[] = [
-  { id: "aerodinamica", name: "Aerodinâmica", shortCode: "AERO", description: "Perfis, asas, empenagem, CFD e arrasto." },
-  { id: "cargas", name: "Cargas e Aeroelasticidade", shortCode: "CARG", description: "Envelope V-n, esforços e flutter." },
-  { id: "estabilidade", name: "Estabilidade e Controle", shortCode: "ESTB", description: "CG, superfícies de comando e trimagem." },
-  { id: "estruturas", name: "Estruturas", shortCode: "ESTR", description: "Longarinas, nervuras, compósitos e ensaios." },
-  { id: "desempenho", name: "Desempenho", shortCode: "DESM", description: "Decolagem, subida, carga paga e pontuação." },
-  { id: "eletrico", name: "Proj. Elétrico", shortCode: "ELET", description: "Motorização, bateria, fiação e telemetria." },
-  { id: "marketing", name: "Marketing", shortCode: "MKT", description: "Marca, @equipezeusma, patrocínios e mídia." },
-  { id: "plantas", name: "Plantas", shortCode: "PLAN", description: "Desenhos técnicos, vistas e pranchas SAE." },
-  { id: "integracao", name: "Integração", shortCode: "INTG", description: "CAD master, encaixes, peso e balanceamento." },
-  { id: "gestao", name: "Gestão", shortCode: "GEST", description: "Cronograma, sprints, pessoas e processos." },
-  { id: "financeiro", name: "Financeiro", shortCode: "FIN", description: "Orçamentos, compras, caixa e prestação." },
+  {
+    id: "aerodinamica",
+    name: "Aerodinâmica",
+    shortCode: "AERO",
+    description: "Perfis, asas, empenagem, CFD e arrasto.",
+    category: "technical",
+    colorHex: "#38bdf8",
+    chipClass: "border-sky-400/45 bg-sky-500/12 text-sky-600 dark:text-sky-300",
+    borderClass: "border-sky-400/50",
+    dotClass: "bg-sky-400",
+    bgTintClass: "bg-sky-500/10",
+  },
+  {
+    id: "cargas",
+    name: "Cargas e Aeroelasticidade",
+    shortCode: "CARG",
+    description: "Envelope V-n, esforços e flutter.",
+    category: "technical",
+    colorHex: "#f43f5e",
+    chipClass: "border-rose-400/45 bg-rose-500/12 text-rose-600 dark:text-rose-300",
+    borderClass: "border-rose-400/50",
+    dotClass: "bg-rose-500",
+    bgTintClass: "bg-rose-500/10",
+  },
+  {
+    id: "estabilidade",
+    name: "Estabilidade e Controle",
+    shortCode: "ESTB",
+    description: "CG, superfícies de comando e trimagem.",
+    category: "technical",
+    colorHex: "#a78bfa",
+    chipClass: "border-violet-400/45 bg-violet-500/12 text-violet-600 dark:text-violet-300",
+    borderClass: "border-violet-400/50",
+    dotClass: "bg-violet-400",
+    bgTintClass: "bg-violet-500/10",
+  },
+  {
+    id: "estruturas",
+    name: "Estruturas",
+    shortCode: "ESTR",
+    description: "Longarinas, nervuras, compósitos e ensaios.",
+    category: "technical",
+    colorHex: "#f97316",
+    chipClass: "border-orange-400/45 bg-orange-500/12 text-orange-600 dark:text-orange-300",
+    borderClass: "border-orange-400/50",
+    dotClass: "bg-orange-500",
+    bgTintClass: "bg-orange-500/10",
+  },
+  {
+    id: "desempenho",
+    name: "Desempenho",
+    shortCode: "DESM",
+    description: "Decolagem, subida, carga paga e pontuação.",
+    category: "technical",
+    colorHex: "#34d399",
+    chipClass: "border-emerald-400/45 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+    borderClass: "border-emerald-400/50",
+    dotClass: "bg-emerald-400",
+    bgTintClass: "bg-emerald-500/10",
+  },
+  {
+    id: "eletrico",
+    name: "Proj. Elétrico",
+    shortCode: "ELET",
+    description: "Motorização, bateria, fiação e telemetria.",
+    category: "technical",
+    colorHex: "#facc15",
+    chipClass: "border-yellow-400/45 bg-yellow-500/12 text-yellow-700 dark:text-yellow-300",
+    borderClass: "border-yellow-400/50",
+    dotClass: "bg-yellow-400",
+    bgTintClass: "bg-yellow-500/10",
+  },
+  {
+    id: "plantas",
+    name: "Plantas",
+    shortCode: "PLAN",
+    description: "Desenhos técnicos, vistas e pranchas SAE.",
+    category: "technical",
+    colorHex: "#818cf8",
+    chipClass: "border-indigo-400/45 bg-indigo-500/12 text-indigo-600 dark:text-indigo-300",
+    borderClass: "border-indigo-400/50",
+    dotClass: "bg-indigo-400",
+    bgTintClass: "bg-indigo-500/10",
+  },
+  {
+    id: "integracao",
+    name: "Integração",
+    shortCode: "INTG",
+    description: "CAD master, encaixes, peso e balanceamento.",
+    category: "technical",
+    colorHex: "#2dd4bf",
+    chipClass: "border-teal-400/45 bg-teal-500/12 text-teal-700 dark:text-teal-300",
+    borderClass: "border-teal-400/50",
+    dotClass: "bg-teal-400",
+    bgTintClass: "bg-teal-500/10",
+  },
+  {
+    id: "marketing",
+    name: "Marketing",
+    shortCode: "MKT",
+    description: "Marca, @equipezeusma, patrocínios e mídia.",
+    category: "corporate",
+    colorHex: "#e879f9",
+    chipClass: "border-fuchsia-400/45 bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300",
+    borderClass: "border-fuchsia-400/50",
+    dotClass: "bg-fuchsia-400",
+    bgTintClass: "bg-fuchsia-500/10",
+  },
+  {
+    id: "gestao",
+    name: "Gestão",
+    shortCode: "GEST",
+    description: "Cronograma, sprints, pessoas e processos.",
+    category: "corporate",
+    colorHex: "#60a5fa",
+    chipClass: "border-blue-400/45 bg-blue-500/12 text-blue-700 dark:text-blue-300",
+    borderClass: "border-blue-400/50",
+    dotClass: "bg-blue-400",
+    bgTintClass: "bg-blue-500/10",
+  },
+  {
+    id: "financeiro",
+    name: "Financeiro",
+    shortCode: "FIN",
+    description: "Orçamentos, compras, caixa e prestação.",
+    category: "corporate",
+    colorHex: "#a3e635",
+    chipClass: "border-lime-400/45 bg-lime-500/12 text-lime-700 dark:text-lime-300",
+    borderClass: "border-lime-400/50",
+    dotClass: "bg-lime-400",
+    bgTintClass: "bg-lime-500/10",
+  },
 ];
+
+export const TECHNICAL_AREAS: Area[] = ZEUS_AREAS.filter((a) => a.category === "technical");
+export const CORPORATE_AREAS: Area[] = ZEUS_AREAS.filter((a) => a.category === "corporate");
+
+export const AREA_ROLE_META: Record<AreaRole, { label: string; badgeClass: string }> = {
+  diretor: {
+    label: "Diretor da Área",
+    badgeClass: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30",
+  },
+  efetivado: {
+    label: "Efetivado",
+    badgeClass: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  },
+  calouro: {
+    label: "Calouro",
+    badgeClass: "bg-zinc-500/15 text-zinc-700 dark:text-zinc-300 border-zinc-500/30",
+  },
+};
 
 export const ROLE_META: Record<Role, { label: string; badgeClass: string; rankOrder: number }> = {
   desenvolvedor: {
@@ -107,6 +248,33 @@ export const TASK_STATUS_META: Record<TaskStatus, { label: string; dotClass: str
   },
 };
 
+export function getAreaMeta(areaId: string): Area {
+  return (
+    ZEUS_AREAS.find((a) => a.id === areaId) ?? {
+      id: areaId,
+      name: areaId,
+      shortCode: areaId.toUpperCase().slice(0, 4),
+      description: "",
+      category: "technical",
+      colorHex: "#38bdf8",
+      chipClass: "border-sky-400/45 bg-sky-500/12 text-sky-300",
+      borderClass: "border-sky-400/50",
+      dotClass: "bg-sky-400",
+      bgTintClass: "bg-sky-500/10",
+    }
+  );
+}
+
+export function getMemberAreaRole(member: Member, areaId: string): AreaRole | null {
+  const fromMemberships = member.areaMemberships?.find((m) => m.areaId === areaId);
+  if (fromMemberships) return fromMemberships.role;
+  if (member.directorAreaIds.includes(areaId)) return "diretor";
+  if (member.areaIds.includes(areaId)) {
+    return member.role === "calouro" ? "calouro" : "efetivado";
+  }
+  return null;
+}
+
 export function isTopLeadership(role: Role): boolean {
   return role === "desenvolvedor" || role === "capitao" || role === "cocapitao";
 }
@@ -126,13 +294,33 @@ export function canManageAnnouncements(user: Member): boolean {
 export function canManageArea(user: Member, areaId: string): boolean {
   if (user.accountStatus !== "approved") return false;
   if (isTopLeadership(user.role)) return true;
-  return user.role === "diretor" && user.directorAreaIds.includes(areaId);
+  if (user.directorAreaIds.includes(areaId)) return true;
+  return Boolean(user.areaMemberships?.some((m) => m.areaId === areaId && m.role === "diretor"));
 }
 
 export function canViewPrivateArea(user: Member, areaId: string): boolean {
   if (user.accountStatus !== "approved") return false;
   if (isTopLeadership(user.role)) return true;
-  return user.areaIds.includes(areaId);
+  return (
+    user.areaIds.includes(areaId) ||
+    Boolean(user.areaMemberships?.some((m) => m.areaId === areaId))
+  );
+}
+
+export function canAccessFinance(user: Member): boolean {
+  return canViewPrivateArea(user, "financeiro");
+}
+
+export function canManageFinance(user: Member): boolean {
+  return canViewPrivateArea(user, "financeiro");
+}
+
+export function canManageMarketing(user: Member): boolean {
+  return canViewPrivateArea(user, "marketing");
+}
+
+export function canManageGestao(user: Member): boolean {
+  return canViewPrivateArea(user, "gestao");
 }
 
 export function canUpdateTaskStatus(user: Member, task: SprintTask): boolean {
@@ -148,6 +336,21 @@ export function computeMemberPoints(memberId: string, tasks: SprintTask[]): numb
     }
   }
   return total;
+}
+
+export function getReportOverrideKey(seasonYear: number, areaId: string): string {
+  return `${seasonYear}:${areaId}`;
+}
+
+export function getReportOverride(
+  overrides: Record<string, number | null>,
+  seasonYear: number,
+  areaId: string
+): number | null {
+  const seasonKey = getReportOverrideKey(seasonYear, areaId);
+  if (seasonKey in overrides) return overrides[seasonKey] ?? null;
+  if (seasonYear === 2026 && areaId in overrides) return overrides[areaId] ?? null;
+  return null;
 }
 
 export function computeReportPercentage(
@@ -167,17 +370,55 @@ export function computeReportPercentage(
 export function computeTeamReportPercentage(
   areas: Area[],
   sections: ReportSection[],
-  overrides: Record<string, number | null> = {}
+  overrides: Record<string, number | null> = {},
+  seasonYear?: number
 ): { teamPercentage: number; byArea: Array<{ areaId: string; percentage: number }> } {
-  const byArea = areas.map((a) => ({
-    areaId: a.id,
-    percentage: computeReportPercentage(a.id, sections, overrides[a.id] ?? null),
-  }));
+  const byArea = areas.map((a) => {
+    const manual =
+      seasonYear !== undefined
+        ? getReportOverride(overrides, seasonYear, a.id)
+        : (overrides[a.id] ?? null);
+    return {
+      areaId: a.id,
+      percentage: computeReportPercentage(a.id, sections, manual),
+    };
+  });
   const teamPercentage =
     byArea.length === 0
       ? 0
       : Math.round(byArea.reduce((sum, item) => sum + item.percentage, 0) / byArea.length);
   return { teamPercentage, byArea };
+}
+
+export function computeFinanceSummary(transactions: FinancialTransaction[]): {
+  incomePaidCents: number;
+  expensePaidCents: number;
+  balanceCents: number;
+  pendingIncomeCents: number;
+  pendingExpenseCents: number;
+} {
+  let incomePaidCents = 0;
+  let expensePaidCents = 0;
+  let pendingIncomeCents = 0;
+  let pendingExpenseCents = 0;
+
+  for (const tx of transactions) {
+    if (tx.kind === "income") {
+      if (tx.status === "paid") incomePaidCents += tx.amountCents;
+      else pendingIncomeCents += tx.amountCents;
+    } else {
+      if (tx.status === "paid") expensePaidCents += tx.amountCents;
+      else pendingExpenseCents += tx.amountCents;
+    }
+  }
+
+  return {
+    incomePaidCents,
+    expensePaidCents,
+    balanceCents: incomePaidCents - expensePaidCents,
+    pendingIncomeCents,
+    pendingExpenseCents,
+  };
 }
 
 export function computeAttendanceStats(

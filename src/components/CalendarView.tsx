@@ -6,11 +6,11 @@ import {
   canApproveInMeeting,
   canManageArea,
   computeDaysUntil,
-  getAreaName,
   ZEUS_AREAS,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
 import type { CalendarCategory } from "@/lib/types";
+import { AreaChip } from "./Badge";
 
 const CATEGORY_META: Record<CalendarCategory, { label: string; dotClass: string; badgeClass: string }> = {
   competition: {
@@ -44,6 +44,7 @@ export function CalendarView() {
   const [todayIso, setTodayIso] = useState<string>("2026-11-24");
   const [cursor, setCursor] = useState({ year: 2026, month: 10 });
   const [selectedDate, setSelectedDate] = useState("2026-11-24");
+  const [seasonScope, setSeasonScope] = useState<"season" | "all">("all");
 
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
@@ -67,7 +68,6 @@ export function CalendarView() {
 
   const daysUntilComp = computeDaysUntil(state.competitionDate, todayIso);
 
-  // Merge custom events + meetings + sprint deadlines
   const allItems = useMemo(() => {
     const list: Array<{
       id: string;
@@ -80,9 +80,13 @@ export function CalendarView() {
     }> = [];
 
     for (const ev of state.calendarEvents) {
+      if (seasonScope === "season" && ev.seasonYear !== state.activeSeason && ev.category !== "competition") {
+        continue;
+      }
       list.push({ ...ev, deletable: ev.category !== "competition" });
     }
     for (const mt of state.meetings) {
+      if (seasonScope === "season" && mt.seasonYear !== state.activeSeason) continue;
       list.push({
         id: `mt-${mt.id}`,
         title: mt.title,
@@ -94,6 +98,7 @@ export function CalendarView() {
       });
     }
     for (const sp of state.sprints) {
+      if (seasonScope === "season" && sp.seasonYear !== state.activeSeason) continue;
       list.push({
         id: `sp-end-${sp.id}`,
         title: `Fechamento: ${sp.name}`,
@@ -104,7 +109,7 @@ export function CalendarView() {
       });
     }
     return list.sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.calendarEvents, state.meetings, state.sprints]);
+  }, [seasonScope, state.activeSeason, state.calendarEvents, state.meetings, state.sprints]);
 
   const monthStart = new Date(cursor.year, cursor.month, 1);
   const startWeekday = monthStart.getDay();
@@ -177,6 +182,26 @@ export function CalendarView() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-md border border-[var(--hairline)] bg-[var(--surface-2)] p-0.5 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setSeasonScope("season")}
+              className={`rounded px-2 py-1 ${
+                seasonScope === "season" ? "bg-blue-600 text-white" : "text-[var(--ink-subtle)]"
+              }`}
+            >
+              ZEUS {state.activeSeason}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSeasonScope("all")}
+              className={`rounded px-2 py-1 ${
+                seasonScope === "all" ? "bg-blue-600 text-white" : "text-[var(--ink-subtle)]"
+              }`}
+            >
+              Todos os anos
+            </button>
+          </div>
           {canManageComp && (
             <label className="flex items-center gap-1.5 text-xs text-[var(--ink-subtle)]">
               <span>Data alvo:</span>
@@ -382,9 +407,7 @@ export function CalendarView() {
                     {ev.description && (
                       <div className="text-[11px] text-[var(--ink-subtle)]">{ev.description}</div>
                     )}
-                    {ev.areaId && (
-                      <div className="text-[10px] text-amber-500">{getAreaName(ev.areaId)}</div>
-                    )}
+                    {ev.areaId && <AreaChip areaId={ev.areaId} showName />}
                   </div>
                 ))}
               </div>
