@@ -31,6 +31,7 @@ import {
   doesTaskCitationMatchGhost,
   GHOST_TEAM_ROSTER,
   isGhostMemberId,
+  isImportedTeamsTask,
 } from "./ghost-members";
 import { isSupabaseConfigured, supabase } from "./supabase";
 import type {
@@ -78,9 +79,10 @@ function subscribeGhostMode(callback: () => void): () => void {
 
 function getGhostModeSnapshot(): boolean {
   try {
-    return typeof window !== "undefined" && localStorage.getItem(GHOST_MODE_KEY) === "true";
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(GHOST_MODE_KEY) !== "false";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -2608,7 +2610,7 @@ export function ZeusProvider({ children }: { children: React.ReactNode }) {
         const matchedTaskIds = state.tasks
           .filter(
             (t) =>
-              (!t.assigneeId || isGhostMemberId(t.assigneeId)) &&
+              (!t.assigneeId || isGhostMemberId(t.assigneeId) || isImportedTeamsTask(t)) &&
               doesTaskCitationMatchGhost(t, ghost)
           )
           .map((t) => t.id);

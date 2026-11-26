@@ -452,4 +452,105 @@ assert.equal(
   false
 );
 
+// Teams imported tasks must move off Júlio onto cited/area ghost members and score them
+const importedOverlayState = applyGhostMembersOverlay(
+  {
+    ...baseOverlayState,
+    tasks: [
+      {
+        id: "imp-shared",
+        sprintId: "sp1",
+        areaId: "desempenho",
+        assigneeId: dev.id,
+        createdBy: dev.id,
+        title: "Simular Envelope (Thainá e Shell)",
+        description: "Importado do Teams (SPRINTS E PRESENÇA 2026.xlsx · Sprint 04) · Citação na planilha: Thainá e Shell",
+        priority: "high",
+        status: "green",
+        directorValidated: true,
+        meetingApproved: true,
+        impactedAreaIds: [],
+        createdAt: "2026-04-01",
+      },
+      {
+        id: "imp-todos-aero",
+        sprintId: "sp1",
+        areaId: "aerodinamica",
+        assigneeId: dev.id,
+        createdBy: dev.id,
+        title: "Perfis alternados (Todos)",
+        description: "Importado do Teams (SPRINTS E PRESENÇA 2026.xlsx · Sprint 01) · Citação na planilha: Todos",
+        priority: "medium",
+        status: "green",
+        directorValidated: true,
+        meetingApproved: true,
+        impactedAreaIds: [],
+        createdAt: "2026-03-10",
+      },
+      {
+        id: "imp-plantas-uncited",
+        sprintId: "sp1",
+        areaId: "plantas",
+        assigneeId: dev.id,
+        createdBy: dev.id,
+        title: "Prancha 3 vistas",
+        description: "Importado do Teams (SPRINTS E PRESENÇA 2026.xlsx · Sprint 05)",
+        priority: "high",
+        status: "green",
+        directorValidated: true,
+        meetingApproved: true,
+        impactedAreaIds: [],
+        createdAt: "2026-05-01",
+      },
+      {
+        id: "imp-julio-mkt",
+        sprintId: "sp1",
+        areaId: "marketing",
+        assigneeId: dev.id,
+        createdBy: dev.id,
+        title: "Camisas trabalho (Julio)",
+        description: "Importado do Teams (SPRINTS E PRESENÇA 2026.xlsx · Sprint 08) · Citação na planilha: Julio",
+        priority: "medium",
+        status: "green",
+        directorValidated: true,
+        meetingApproved: true,
+        impactedAreaIds: [],
+        createdAt: "2026-06-15",
+      },
+    ],
+  },
+  true
+);
+
+const sharedTask = importedOverlayState.tasks.find((t) => t.id === "imp-shared")!;
+assert.ok(
+  sharedTask.coAssigneeIds?.includes("ghost-thaina") &&
+    sharedTask.coAssigneeIds?.includes("ghost-richeldson"),
+  "Citação 'Thainá e Shell' deve creditar ambos os participantes"
+);
+assert.equal(computeMemberPoints("ghost-thaina", importedOverlayState.tasks), 3);
+assert.equal(computeMemberPoints("ghost-richeldson", importedOverlayState.tasks), 3);
+
+const todosAeroTask = importedOverlayState.tasks.find((t) => t.id === "imp-todos-aero")!;
+assert.ok(
+  todosAeroTask.coAssigneeIds?.includes("ghost-jullya") &&
+    todosAeroTask.coAssigneeIds?.includes("ghost-mariany"),
+  "Citação 'Todos' em Aerodinâmica deve creditar toda a equipe da área"
+);
+assert.equal(computeMemberPoints("ghost-jullya", importedOverlayState.tasks), 2);
+assert.equal(computeMemberPoints("ghost-mariany", importedOverlayState.tasks), 2);
+
+const uncitedPlantasTask = importedOverlayState.tasks.find((t) => t.id === "imp-plantas-uncited")!;
+assert.notEqual(
+  uncitedPlantasTask.assigneeId,
+  dev.id,
+  "Tarefa importada sem citação em Plantas deve sair da conta do Júlio para a equipe da área"
+);
+
+assert.equal(
+  computeMemberPoints(dev.id, importedOverlayState.tasks),
+  2,
+  "Júlio deve pontuar apenas pelas tarefas que realmente citam Júlio (2 pts de imp-julio-mkt)"
+);
+
 console.log("All Zeus domain & RBAC tests passed!");

@@ -7,6 +7,7 @@ import {
   computeMemberPoints,
   getAreaName,
   getMemberAreaRole,
+  isMemberAssignedToTask,
   isTopLeadership,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
@@ -67,7 +68,7 @@ export function MemberProfileModal({
   const canEdit =
     !member.isGhost && (currentUser.id === member.id || isTopLeadership(currentUser.role));
   const points = computeMemberPoints(member.id, state.tasks);
-  const myTasks = state.tasks.filter((t) => t.assigneeId === member.id);
+  const myTasks = state.tasks.filter((t) => isMemberAssignedToTask(member.id, t));
   const approvedTasks = myTasks.filter((t) => t.meetingApproved);
   const att = computeAttendanceStats(member.id, state.attendance);
 

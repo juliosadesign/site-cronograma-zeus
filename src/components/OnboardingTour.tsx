@@ -267,15 +267,17 @@ export function OnboardingTour({
         </>
       )}
 
-      {/* Floating Guide Card */}
+      {/* Floating Guide Card (inverted contrast: dark card on light theme, white card on dark theme) */}
       <div
         style={cardStyle}
         className={`${
-          targetRect ? "" : "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(430px,calc(100vw-2rem))]"
-        } zeus-card zeus-tour-card rounded-2xl border-[1.5px] border-sky-500/50 bg-[var(--surface-1)] p-5 shadow-2xl space-y-3.5`}
+          targetRect
+            ? ""
+            : "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(430px,calc(100vw-2rem))]"
+        } zeus-tour-card rounded-2xl border-[1.5px] bg-zinc-950 text-zinc-50 border-zinc-800 shadow-[0_24px_64px_-12px_rgba(0,0,0,0.65)] dark:bg-white dark:text-zinc-950 dark:border-zinc-200 dark:shadow-[0_24px_64px_-12px_rgba(0,0,0,0.75)] p-5 space-y-3.5`}
       >
         <div className="flex items-start justify-between gap-2">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/15 px-2.5 py-0.5 text-[10px] font-mono font-semibold text-sky-300">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/50 bg-sky-500/20 text-sky-300 dark:border-sky-600/35 dark:bg-sky-100 dark:text-sky-700 px-2.5 py-0.5 text-[10px] font-mono font-semibold">
             <Compass className="h-3 w-3" />
             PASSO {safeStepIndex + 1} DE {TOUR_STEPS.length}
           </div>
@@ -283,19 +285,21 @@ export function OnboardingTour({
             type="button"
             onClick={finishTour}
             aria-label="Pular tutorial"
-            className="h-7 w-7 rounded-md border border-[var(--hairline)] flex items-center justify-center text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+            className="h-7 w-7 rounded-md border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 dark:border-zinc-300 dark:text-zinc-500 dark:hover:text-zinc-950 dark:hover:border-zinc-400 flex items-center justify-center transition-colors"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
         <div className="space-y-1.5">
-          <h3 className="text-base font-semibold text-[var(--ink)]">{step.title}</h3>
-          <p className="text-xs text-[var(--ink-muted)] leading-relaxed">{step.description}</p>
+          <h3 className="text-base font-semibold text-white dark:text-zinc-950">{step.title}</h3>
+          <p className="text-xs text-zinc-300 dark:text-zinc-700 leading-relaxed">
+            {step.description}
+          </p>
         </div>
 
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200 flex items-start gap-2">
-          <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
+        <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-[11px] text-amber-200 dark:border-amber-500/40 dark:bg-amber-50 dark:text-amber-900 flex items-start gap-2">
+          <Sparkles className="h-3.5 w-3.5 text-amber-400 dark:text-amber-600 shrink-0 mt-0.5" />
           <span>{step.tip}</span>
         </div>
 
@@ -310,8 +314,8 @@ export function OnboardingTour({
                 onClick={() => setStepIndex(idx)}
                 className={`h-1.5 rounded-full transition-all ${
                   idx === safeStepIndex
-                    ? "w-5 bg-sky-400"
-                    : "w-1.5 bg-[var(--hairline-strong)] hover:bg-sky-400/50"
+                    ? "w-5 bg-sky-400 dark:bg-blue-600"
+                    : "w-1.5 bg-zinc-700 hover:bg-sky-400/60 dark:bg-zinc-300 dark:hover:bg-blue-500/60"
                 }`}
               />
             ))}
@@ -322,7 +326,7 @@ export function OnboardingTour({
               <button
                 type="button"
                 onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--hairline)] px-2.5 py-1.5 text-xs text-[var(--ink-muted)] hover:text-[var(--ink)]"
+                className="inline-flex items-center gap-1 rounded-md border border-zinc-700 text-zinc-200 hover:text-white hover:border-zinc-500 dark:border-zinc-300 dark:text-zinc-700 dark:hover:text-zinc-950 dark:hover:border-zinc-400 px-2.5 py-1.5 text-xs transition-colors"
               >
                 <ArrowLeft className="h-3 w-3" /> Anterior
               </button>
@@ -330,7 +334,7 @@ export function OnboardingTour({
               <button
                 type="button"
                 onClick={finishTour}
-                className="rounded-md px-2 py-1.5 text-xs text-[var(--ink-subtle)] hover:text-[var(--ink)]"
+                className="rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-white dark:text-zinc-600 dark:hover:text-zinc-950 transition-colors"
               >
                 Pular
               </button>

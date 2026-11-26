@@ -234,6 +234,10 @@ export function isGhostMemberId(id?: string | null): boolean {
   return Boolean(id && id.startsWith("ghost-"));
 }
 
+export function isImportedTeamsTask(task: SprintTask): boolean {
+  return task.description.includes("Importado do Teams");
+}
+
 function normalizeName(value: string): string {
   return value
     .trim()
@@ -260,57 +264,84 @@ function buildSortedAliasPool(ghosts: readonly GhostMemberDefinition[]) {
 }
 
 const ALL_SORTED_ALIASES = buildSortedAliasPool(GHOST_TEAM_ROSTER);
+const GHOST_BY_ID = new Map(GHOST_TEAM_ROSTER.map((g) => [g.id, g]));
 
-function findMatchedGhostIdForCitation(
-  task: SprintTask,
-  allowedGhostIds?: Set<string>
-): string | null {
-  const source = task.description?.split(/Citação na planilha:/i)[1] ?? task.description ?? "";
-  const normalizedCitation = normalizeName(source);
-  if (!normalizedCitation) return null;
+function stableHash(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
 
-  // Prefer matching ghosts whose confirmed area contains the task's area first,
-  // while still honoring longer global disambiguating aliases like "w. mateus".
-  const areaAliases = ALL_SORTED_ALIASES.filter((p) => p.areaIds.includes(task.areaId));
-  const combinedPool = [...areaAliases, ...ALL_SORTED_ALIASES];
+function extractExplicitCitationGhosts(task: SprintTask): {
+  ghostIds: string[];
+  mentionsJulio: boolean;
+  mentionsAllTeam: boolean;
+} {
+  const citationPart = task.description.split(/Citação na planilha:/i)[1] ?? "";
+  const hasExplicitCitation = citationPart.trim().length > 0;
+  const rawSource = hasExplicitCitation ? citationPart : task.title;
+  let working = normalizeName(rawSource);
 
-  // Disambiguate "w. mateus" / "wemerson mateus" before short "mateus"
+  const matchedGhostIds: string[] = [];
+  const pushUnique = (id: string) => {
+    if (!matchedGhostIds.includes(id)) matchedGhostIds.push(id);
+  };
+
+  // Check multi-word / punctuated aliases first (e.g. "w. mateus" -> Wemerson, never Mateus)
   for (const pair of ALL_SORTED_ALIASES) {
-    if (pair.alias.includes(" ") || pair.alias.includes(".")) {
-      const multiPattern = new RegExp(
-        `(^|[^a-z0-9])${escapeRegex(pair.alias)}(?=$|[^a-z0-9])`,
-        "i"
-      );
-      if (multiPattern.test(normalizedCitation)) {
-        if (!allowedGhostIds || allowedGhostIds.has(pair.ghostId)) {
-          return pair.ghostId;
-        }
-        return null;
-      }
+    if (!pair.alias.includes(" ") && !pair.alias.includes(".")) continue;
+    const multiRegex = new RegExp(
+      `(^|[^a-z0-9])${escapeRegex(pair.alias)}(?=$|[^a-z0-9])`,
+      "gi"
+    );
+    if (multiRegex.test(working)) {
+      pushUnique(pair.ghostId);
+      working = working.replace(multiRegex, " ");
     }
   }
 
-  for (const pair of combinedPool) {
-    if (allowedGhostIds && !allowedGhostIds.has(pair.ghostId)) continue;
-    const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegex(pair.alias)}(?=$|[^a-z0-9])`, "i");
-    if (pattern.test(normalizedCitation)) {
-      return pair.ghostId;
+  // Check single-token aliases in the remaining normalized text
+  const singlePool = ALL_SORTED_ALIASES.filter(
+    (p) => !p.alias.includes(" ") && !p.alias.includes(".")
+  );
+  // Prefer members associated with task's area first when iterating ties
+  const orderedSinglePool = [
+    ...singlePool.filter((p) => p.areaIds.includes(task.areaId)),
+    ...singlePool,
+  ];
+  for (const pair of orderedSinglePool) {
+    const singleRegex = new RegExp(
+      `(^|[^a-z0-9])${escapeRegex(pair.alias)}(?=$|[^a-z0-9])`,
+      "i"
+    );
+    if (singleRegex.test(working)) {
+      pushUnique(pair.ghostId);
     }
   }
 
-  return null;
+  const mentionsJulio = /(^|[^a-z0-9])julio(?=$|[^a-z0-9])/i.test(working);
+  const mentionsAllTeam =
+    /(^|[^a-z0-9])(todos|gestao e diretores|novatos)(?=$|[^a-z0-9])/i.test(working);
+
+  return {
+    ghostIds: matchedGhostIds,
+    mentionsJulio,
+    mentionsAllTeam,
+  };
 }
 
 /**
- * Checks whether an unassigned task citation belongs to a specific ghost definition,
- * respecting longer-alias precedence (e.g. "W. Mateus" -> Wemerson, never Mateus Costa).
+ * Checks whether an imported/unassigned task citation explicitly names a specific ghost
+ * (used when allocating a real account to claim historical tasks from that ghost).
  */
 export function doesTaskCitationMatchGhost(
   task: SprintTask,
   ghost: GhostMemberDefinition
 ): boolean {
-  const matched = findMatchedGhostIdForCitation(task);
-  return matched === ghost.id;
+  const { ghostIds } = extractExplicitCitationGhosts(task);
+  return ghostIds.includes(ghost.id);
 }
 
 /** Builds typed AreaMembership entries from a ghost definition (Diretor vs Efetivado). */
@@ -340,17 +371,68 @@ export function getUnallocatedGhosts(
   );
 }
 
+function buildResolvedAreaTeamIds(
+  areaId: string,
+  resolveGhostToMemberId: (ghostId: string) => string | null
+): string[] {
+  // Ordered: confirmed director(s) first, then confirmed 2026 area members
+  const directors = GHOST_TEAM_ROSTER.filter(
+    (g) => g.roleConfirmed && g.directorAreaIds.includes(areaId)
+  );
+  const members = GHOST_TEAM_ROSTER.filter(
+    (g) =>
+      g.roleConfirmed &&
+      !g.directorAreaIds.includes(areaId) &&
+      g.areaIds.includes(areaId)
+  );
+  const ordered = [...directors, ...members];
+  const resolved: string[] = [];
+  for (const ghost of ordered) {
+    const id = resolveGhostToMemberId(ghost.id);
+    if (id && !resolved.includes(id)) resolved.push(id);
+  }
+  return resolved;
+}
+
 /**
- * Pure client-side overlay that injects unallocated ghost team members when Presentation
- * Mode is ON and binds matching unassigned task citations in memory.
+ * Pure client-side overlay that:
+ * 1) Injects unallocated ghost team members when Presentation Mode is ON.
+ * 2) Reassigns imported Teams tasks off Júlio's placeholder assignee onto the matching
+ *    ghost (or real allocated member), supporting multi-person credits (`coAssigneeIds`),
+ *    "Todos" area credits, and deterministic area distribution for uncited imported tasks.
  */
 export function applyGhostMembersOverlay(state: ZeusState, enabled: boolean): ZeusState {
   if (!enabled) return state;
 
-  const activeGhostDefs = getUnallocatedGhosts(state.members, state.ghostAllocations ?? {});
-  if (activeGhostDefs.length === 0) return state;
-
+  const ghostAllocations = state.ghostAllocations ?? {};
+  const activeGhostDefs = getUnallocatedGhosts(state.members, ghostAllocations);
   const activeGhostIds = new Set(activeGhostDefs.map((g) => g.id));
+
+  const realMemberByNormalizedName = new Map<string, string>();
+  let julioRealId: string | null = null;
+  for (const m of state.members) {
+    if (m.isGhost) continue;
+    const norm = normalizeName(m.fullName);
+    realMemberByNormalizedName.set(norm, m.id);
+    if (!julioRealId && /\bjulio\b/.test(norm)) {
+      julioRealId = m.id;
+    }
+  }
+
+  const resolveGhostToMemberId = (ghostId: string): string | null => {
+    const allocatedId = ghostAllocations[ghostId];
+    if (allocatedId && state.members.some((m) => !m.isGhost && m.id === allocatedId)) {
+      return allocatedId;
+    }
+    const def = GHOST_BY_ID.get(ghostId);
+    if (def) {
+      const existingRealId = realMemberByNormalizedName.get(normalizeName(def.fullName));
+      if (existingRealId) return existingRealId;
+    }
+    if (activeGhostIds.has(ghostId)) return ghostId;
+    return null;
+  };
+
   const ghostMembers: Member[] = activeGhostDefs.map((ghost) => {
     const areaMemberships = buildMembershipsForGhost(ghost);
     return {
@@ -371,13 +453,53 @@ export function applyGhostMembersOverlay(state: ZeusState, enabled: boolean): Ze
   });
 
   const combinedMembers = [...state.members, ...ghostMembers];
-  const memberIds = new Set(combinedMembers.map((m) => m.id));
 
   const tasks = state.tasks.map((task) => {
-    if (task.assigneeId && memberIds.has(task.assigneeId)) return task;
-    const matchedGhostId = findMatchedGhostIdForCitation(task, activeGhostIds);
-    if (!matchedGhostId || matchedGhostId === task.assigneeId) return task;
-    return { ...task, assigneeId: matchedGhostId };
+    const imported = isImportedTeamsTask(task);
+    const shouldResolve = imported || !task.assigneeId;
+    if (!shouldResolve) return task;
+
+    const { ghostIds, mentionsJulio, mentionsAllTeam } = extractExplicitCitationGhosts(task);
+    const participants: string[] = [];
+    for (const gId of ghostIds) {
+      const resolved = resolveGhostToMemberId(gId);
+      if (resolved && !participants.includes(resolved)) {
+        participants.push(resolved);
+      }
+    }
+    if (mentionsJulio && julioRealId && !participants.includes(julioRealId)) {
+      participants.push(julioRealId);
+    }
+
+    if (participants.length > 0) {
+      return {
+        ...task,
+        assigneeId: participants[0],
+        coAssigneeIds: participants.length > 1 ? participants : undefined,
+      };
+    }
+
+    const areaTeamIds = buildResolvedAreaTeamIds(task.areaId, resolveGhostToMemberId);
+    if (mentionsAllTeam && areaTeamIds.length > 0) {
+      return {
+        ...task,
+        assigneeId: areaTeamIds[0],
+        coAssigneeIds: areaTeamIds.length > 1 ? areaTeamIds : undefined,
+      };
+    }
+
+    // Imported Teams tasks without explicit person citations should still leave Júlio's
+    // placeholder ID and be distributed across that area's confirmed 2026 team.
+    if (imported && areaTeamIds.length > 0) {
+      const picked = areaTeamIds[stableHash(task.id || task.title) % areaTeamIds.length];
+      return {
+        ...task,
+        assigneeId: picked,
+        coAssigneeIds: undefined,
+      };
+    }
+
+    return task;
   });
 
   return {

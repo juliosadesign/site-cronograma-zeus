@@ -97,6 +97,7 @@ export interface SprintTask {
   sprintId: string;
   areaId: string;
   assigneeId: string;
+  coAssigneeIds?: string[];
   createdBy: string;
   title: string;
   description: string;

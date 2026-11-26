@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { computeAttendanceStats, computeMemberPoints, ROLE_META } from "@/lib/domain";
+import { computeAttendanceStats, computeMemberPoints, isMemberAssignedToTask, ROLE_META } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
 import { AreaChip, RoleBadge } from "./Badge";
 import { MemberAvatar } from "./MemberAvatar";
@@ -34,7 +34,7 @@ export function RankingView({
   const ranked = approvedMembers
     .map((m) => {
       const points = computeMemberPoints(m.id, scopedTasks);
-      const myTasks = scopedTasks.filter((t) => t.assigneeId === m.id);
+      const myTasks = scopedTasks.filter((t) => isMemberAssignedToTask(m.id, t));
       const approvedTasks = myTasks.filter((t) => t.meetingApproved);
       const att = computeAttendanceStats(m.id, scopedAttendance);
       return { member: m, points, myTasks, approvedTasks, att };

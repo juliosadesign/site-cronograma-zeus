@@ -260,8 +260,12 @@ export function SprintsView({
       }
 
       if (q) {
-        const assigneeName = memberById.get(t.assigneeId)?.fullName.toLowerCase() ?? "";
-        const haystack = `${t.title} ${t.description} ${assigneeName} ${taskSprint.name}`.toLowerCase();
+        const ids = t.coAssigneeIds?.length ? t.coAssigneeIds : [t.assigneeId];
+        const assigneeNames = ids
+          .map((id) => memberById.get(id)?.fullName ?? "")
+          .join(" ")
+          .toLowerCase();
+        const haystack = `${t.title} ${t.description} ${assigneeNames} ${taskSprint.name}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
 
@@ -870,7 +874,27 @@ export function SprintsView({
                         </div>
                       )}
                       <div className="flex flex-wrap items-center gap-2 pt-1">
-                        {assignee ? (
+                        {task.coAssigneeIds && task.coAssigneeIds.length > 1 ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {task.coAssigneeIds
+                              .map((id) => memberById.get(id))
+                              .filter((m): m is NonNullable<typeof m> => Boolean(m))
+                              .map((m) => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => onOpenProfile(m.id)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-[var(--hairline)] bg-[var(--surface-2)]/70 px-1.5 py-0.5 text-[11px] text-[var(--ink-muted)] hover:text-amber-400"
+                                >
+                                  <MemberAvatar member={m} size="sm" />
+                                  <span className="font-medium">{m.fullName.split(" ")[0]}</span>
+                                  {m.isGhost && (
+                                    <Ghost className="h-2.5 w-2.5 text-violet-400" />
+                                  )}
+                                </button>
+                              ))}
+                          </div>
+                        ) : assignee ? (
                           <button
                             type="button"
                             onClick={() => onOpenProfile(assignee.id)}
@@ -887,9 +911,11 @@ export function SprintsView({
                         ) : (
                           <span className="text-xs text-[var(--ink-muted)]">Responsável: —</span>
                         )}
-                        {assignee && (!assignee.isGhost || assignee.roleConfirmed) && (
-                          <RoleBadge role={assignee.role} />
-                        )}
+                        {assignee &&
+                          (!task.coAssigneeIds || task.coAssigneeIds.length <= 1) &&
+                          (!assignee.isGhost || assignee.roleConfirmed) && (
+                            <RoleBadge role={assignee.role} />
+                          )}
                         {task.impactedAreaIds.length > 0 && (
                           <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ink-subtle)]">
                             Impacta:

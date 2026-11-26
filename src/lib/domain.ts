@@ -374,15 +374,20 @@ export function canManageGestao(user: Member): boolean {
   return canViewPrivateArea(user, "gestao");
 }
 
+export function isMemberAssignedToTask(memberId: string, task: SprintTask): boolean {
+  if (!memberId) return false;
+  return task.assigneeId === memberId || Boolean(task.coAssigneeIds?.includes(memberId));
+}
+
 export function canUpdateTaskStatus(user: Member, task: SprintTask): boolean {
   if (user.accountStatus !== "approved") return false;
-  return task.assigneeId === user.id || canManageArea(user, task.areaId);
+  return isMemberAssignedToTask(user.id, task) || canManageArea(user, task.areaId);
 }
 
 export function computeMemberPoints(memberId: string, tasks: SprintTask[]): number {
   let total = 0;
   for (const task of tasks) {
-    if (task.assigneeId === memberId && task.meetingApproved) {
+    if (isMemberAssignedToTask(memberId, task) && task.meetingApproved) {
       total += PRIORITY_META[task.priority].points;
     }
   }
