@@ -12,6 +12,7 @@ import {
 import {
   canApproveInMeeting,
   canManageArea,
+  getAreaCardStyle,
   getAreaName,
   ZEUS_AREAS,
 } from "@/lib/domain";
@@ -204,7 +205,8 @@ export function MeetingsView({
                 return (
                   <div
                     key={task.id}
-                    className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/70 p-3 space-y-2"
+                    className="rounded-xl border p-3 space-y-2"
+                    style={getAreaCardStyle(task.areaId, { emphasis: "medium" })}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <div className="space-y-1 min-w-0">
@@ -367,8 +369,17 @@ export function MeetingsView({
                 <button
                   key={mt.id}
                   onClick={() => setSelectedMeetingId(mt.id)}
-                  className={`w-full text-left rounded-lg border p-3 space-y-1 transition-colors ${
-                    active
+                  style={
+                    mt.areaId
+                      ? getAreaCardStyle(mt.areaId, { active, emphasis: "medium" })
+                      : undefined
+                  }
+                  className={`w-full text-left rounded-xl border p-3 space-y-1 transition-all ${
+                    mt.areaId
+                      ? active
+                        ? "ring-1 ring-amber-400/70"
+                        : "hover:brightness-105"
+                      : active
                       ? "border-amber-500/60 bg-amber-500/10"
                       : "border-[var(--hairline)] bg-[var(--surface-1)] hover:border-[var(--hairline-strong)]"
                   }`}

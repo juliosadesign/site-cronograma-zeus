@@ -20,6 +20,7 @@ import {
   computeReportPercentage,
   computeTeamReportPercentage,
   CORPORATE_AREAS,
+  getAreaCardStyle,
   getAreaMeta,
   getAreaName,
   getReportOverride,
@@ -165,14 +166,19 @@ export function AreasView({
           </div>
 
           <div
-            className="zeus-card rounded-xl px-3.5 py-2 flex items-center gap-3"
-            style={{ borderColor: `${area.colorHex}77` }}
+            className="zeus-card rounded-xl px-3.5 py-2 flex items-center gap-3 border-[1.5px]"
+            style={getAreaCardStyle(area.id, { active: true, emphasis: "medium" })}
           >
             <GaugeRing percentage={pct} />
             <div>
-              <div className="text-[11px] text-[var(--ink-subtle)]">Relatório · {area.shortCode}</div>
-              <div className="font-mono text-sm font-semibold" style={{ color: area.colorHex }}>
-                {pct}% · {areaScore.earned}/{areaScore.max} pts
+              <div className="text-[11px] text-[var(--ink-muted)]">Relatório · {area.shortCode}</div>
+              <div className="font-mono text-sm font-semibold text-[var(--ink)] flex items-center gap-1.5">
+                <span className={`rounded border px-1.5 py-0.2 text-[10px] ${area.chipClass}`}>
+                  {pct}%
+                </span>
+                <span>
+                  {areaScore.earned}/{areaScore.max} pts
+                </span>
               </div>
             </div>
           </div>
@@ -192,7 +198,8 @@ export function AreasView({
                 key={corp.id}
                 type="button"
                 onClick={() => onNavigate(corp.id as NavTab)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-medium hover:opacity-90"
+                style={getAreaCardStyle(corp.id, { emphasis: "medium" })}
+                className="zeus-area-card inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium text-[var(--ink)]"
               >
                 <span
                   className="h-2 w-2 rounded-full"
@@ -216,18 +223,14 @@ export function AreasView({
             <button
               key={a.id}
               onClick={() => setSelectedAreaId(a.id)}
-              style={{
-                borderColor: active ? a.colorHex : undefined,
-                backgroundColor: active ? `${a.colorHex}14` : undefined,
-                borderLeftWidth: "3px",
-                borderLeftColor: a.colorHex,
-              }}
-              className="zeus-card-interactive text-left rounded-xl border border-[var(--hairline)] bg-[var(--surface-1)] p-3"
+              style={getAreaCardStyle(a.id, { active, emphasis: "strong" })}
+              className={`zeus-area-card text-left rounded-xl border-[1.5px] p-3 ${
+                active ? "ring-1 ring-white/25 dark:ring-white/20" : ""
+              }`}
             >
               <div className="flex items-center justify-between gap-1">
                 <span
-                  className="font-mono text-[10px] font-bold flex items-center gap-1.5"
-                  style={{ color: a.colorHex }}
+                  className={`inline-flex items-center gap-1.5 rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold ${a.chipClass}`}
                 >
                   <span
                     className="h-2 w-2 rounded-full"
@@ -237,15 +240,15 @@ export function AreasView({
                 </span>
                 <span className="font-mono text-xs font-semibold text-[var(--ink)]">{aPct}%</span>
               </div>
-              <div className="mt-1 text-xs font-medium truncate">{a.name}</div>
-              <div className="mt-2 h-1.5 w-full rounded-full bg-[var(--surface-2)] overflow-hidden">
+              <div className="mt-1.5 text-xs font-semibold text-[var(--ink)] truncate">{a.name}</div>
+              <div className="mt-2 h-1.5 w-full rounded-full bg-black/15 dark:bg-black/35 overflow-hidden">
                 <div
                   className="h-full transition-all"
                   style={{ width: `${aPct}%`, backgroundColor: a.colorHex }}
                 />
               </div>
               {!hasAccess && (
-                <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-[var(--ink-subtle)]">
+                <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-[var(--ink-muted)]">
                   <Lock className="h-2.5 w-2.5" /> Privado restrito
                 </div>
               )}
@@ -257,8 +260,8 @@ export function AreasView({
       {/* Selected Area Detail */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section
-          className="zeus-card rounded-xl p-4 space-y-4"
-          style={{ borderTopWidth: "3px", borderTopColor: area.colorHex }}
+          className="zeus-card rounded-xl p-4 space-y-4 border-[1.5px]"
+          style={getAreaCardStyle(area.id, { emphasis: "subtle" })}
         >
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -466,7 +469,10 @@ export function AreasView({
         </section>
 
         {/* Private Area Space with inline Edit */}
-        <section className="zeus-card rounded-xl p-4 space-y-4">
+        <section
+          className="zeus-card rounded-xl p-4 space-y-4 border-[1.5px]"
+          style={getAreaCardStyle(area.id, { emphasis: "subtle" })}
+        >
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold flex items-center gap-2">
               <Lock className="h-4 w-4 text-amber-400" />

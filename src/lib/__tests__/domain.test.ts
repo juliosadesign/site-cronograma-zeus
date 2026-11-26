@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  buildTintedCardStyle,
   canAccessFinance,
   canApproveAccounts,
   canApproveInMeeting,
@@ -19,6 +20,7 @@ import {
   computeTeamReportPercentage,
   CORPORATE_AREAS,
   evaluateScheduleHealth,
+  getAreaCardStyle,
   getAreaMeta,
   getInitials,
   getMemberAreaRole,
@@ -235,5 +237,20 @@ const flightStats = computeFlightReadiness([
   { id: "f2", seasonYear: 2026, category: "seguranca", title: "Fail-safe", critical: true, checked: false, notes: "" },
 ]);
 assert.deepEqual(flightStats, { checked: 1, total: 2, criticalPending: 1, percentage: 50 });
+
+for (const area of ZEUS_AREAS) {
+  for (const emphasis of ["strong", "medium", "subtle"] as const) {
+    const baseStyle = getAreaCardStyle(area.id, { emphasis });
+    const activeStyle = getAreaCardStyle(area.id, { active: true, emphasis });
+    assert.ok(baseStyle.background.includes(area.colorHex), `${area.id} ${emphasis} background usa colorHex`);
+    assert.ok(baseStyle.borderColor.includes(area.colorHex), `${area.id} ${emphasis} border usa colorHex`);
+    assert.ok(baseStyle.boxShadow.includes(area.colorHex), `${area.id} ${emphasis} shadow usa colorHex`);
+    assert.ok(activeStyle.background.includes(area.colorHex), `${area.id} ${emphasis} active background usa colorHex`);
+    assert.ok(activeStyle.borderColor.includes(area.colorHex), `${area.id} ${emphasis} active border usa colorHex`);
+    assert.ok(activeStyle.boxShadow.includes(area.colorHex), `${area.id} ${emphasis} active shadow usa colorHex`);
+  }
+}
+const customTint = buildTintedCardStyle("#f59e0b", { active: true, emphasis: "strong" });
+assert.equal(customTint.borderColor, "#f59e0b");
 
 console.log("All Zeus domain & RBAC tests passed!");

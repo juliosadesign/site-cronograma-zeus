@@ -13,7 +13,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { canManageArea, getAreaMeta, ZEUS_AREAS } from "@/lib/domain";
+import { canManageArea, getAreaCardStyle, ZEUS_AREAS } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
 import type { ArchiveDocType, ArchiveDocument } from "@/lib/types";
 import { AreaChip } from "./Badge";
@@ -289,7 +289,6 @@ export function ArchiveView() {
         ) : (
           filtered.map((doc) => {
             const meta = DOC_TYPE_META[doc.docType];
-            const areaMeta = getAreaMeta(doc.areaId);
             const canEdit = canManageArea(currentUser, doc.areaId);
             const isEditing = editingId === doc.id;
             const Icon =
@@ -302,8 +301,8 @@ export function ArchiveView() {
             return (
               <div
                 key={doc.id}
-                className="zeus-card rounded-xl p-4 space-y-2.5"
-                style={{ borderLeftWidth: "3px", borderLeftColor: areaMeta.colorHex }}
+                className="zeus-card rounded-xl p-4 space-y-2.5 border-[1.5px]"
+                style={getAreaCardStyle(doc.areaId, { emphasis: "medium" })}
               >
                 {isEditing ? (
                   <div className="space-y-2">

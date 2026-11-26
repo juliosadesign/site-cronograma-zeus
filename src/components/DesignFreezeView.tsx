@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ExternalLink, GitCommitHorizontal, Lock, Plus, Trash2 } from "lucide-react";
-import { canManageArea, isTopLeadership } from "@/lib/domain";
+import { buildTintedCardStyle, canManageArea, isTopLeadership } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
 import type { AircraftConcept, AircraftRevisionStatus } from "@/lib/types";
 
@@ -221,16 +221,18 @@ export function DesignFreezeView() {
             return (
               <div
                 key={rev.id}
-                className="zeus-card rounded-xl p-4 space-y-3"
-                style={{
-                  borderLeftWidth: "4px",
-                  borderLeftColor:
-                    rev.status === "competition"
-                      ? "#f59e0b"
-                      : rev.status === "frozen"
-                      ? "#2dd4bf"
-                      : "#71717a",
-                }}
+                className="zeus-card rounded-xl p-4 space-y-3 border-[1.5px]"
+                style={buildTintedCardStyle(
+                  rev.status === "competition"
+                    ? "#f59e0b"
+                    : rev.status === "frozen"
+                    ? "#2dd4bf"
+                    : "#71717a",
+                  {
+                    active: rev.status === "competition",
+                    emphasis: rev.status === "draft" ? "subtle" : "medium",
+                  }
+                )}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="space-y-1">

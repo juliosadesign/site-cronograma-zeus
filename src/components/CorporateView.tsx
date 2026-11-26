@@ -21,6 +21,7 @@ import {
   canManageGestao,
   canManageMarketing,
   computeFinanceSummary,
+  getAreaCardStyle,
   getAreaMeta,
   getMemberAreaRole,
   ZEUS_AREAS,
@@ -64,8 +65,8 @@ export function CorporateView({
     <div className="space-y-5">
       {/* Corporate Executive Banner */}
       <div
-        className="zeus-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-        style={{ borderLeftWidth: "4px", borderLeftColor: areaMeta.colorHex }}
+        className="zeus-card rounded-xl p-4 border-[1.5px] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+        style={getAreaCardStyle(section, { active: true, emphasis: "strong" })}
       >
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -179,7 +180,10 @@ function FinanceiroModule() {
     <div className="space-y-5">
       {/* Executive Finance KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="zeus-card rounded-xl p-4 border-lime-500/35">
+        <div
+          className="zeus-card rounded-xl p-4 border-[1.5px]"
+          style={getAreaCardStyle("financeiro", { emphasis: "medium" })}
+        >
           <div className="flex items-center justify-between text-xs text-[var(--ink-subtle)]">
             <span>Saldo em Caixa ({state.activeSeason})</span>
             <Wallet className="h-4 w-4 text-lime-400" />
@@ -583,7 +587,10 @@ function MarketingModule() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="zeus-card rounded-xl p-4 border-fuchsia-500/35">
+        <div
+          className="zeus-card rounded-xl p-4 border-[1.5px]"
+          style={getAreaCardStyle("marketing", { emphasis: "medium" })}
+        >
           <div className="flex items-center justify-between text-xs text-[var(--ink-subtle)]">
             <span>Ações na Temporada</span>
             <Megaphone className="h-4 w-4 text-fuchsia-400" />
@@ -705,7 +712,11 @@ function MarketingModule() {
         {seasonCampaigns.map((c) => {
           const st = MKT_STATUS_META[c.status];
           return (
-            <div key={c.id} className="zeus-card rounded-xl p-4 space-y-2.5">
+            <div
+              key={c.id}
+              className="zeus-card rounded-xl p-4 space-y-2.5 border"
+              style={getAreaCardStyle("marketing", { emphasis: "subtle" })}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="rounded border border-fuchsia-500/40 bg-fuchsia-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300">
@@ -806,7 +817,10 @@ function GestaoModule({ onOpenProfile }: { onOpenProfile: (memberId: string) => 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="zeus-card rounded-xl p-4 border-blue-500/35">
+        <div
+          className="zeus-card rounded-xl p-4 border-[1.5px]"
+          style={getAreaCardStyle("gestao", { emphasis: "medium" })}
+        >
           <div className="flex items-center justify-between text-xs text-[var(--ink-subtle)]">
             <span>OKRs Ativos ({state.activeSeason})</span>
             <Target className="h-4 w-4 text-blue-400" />
@@ -919,7 +933,8 @@ function GestaoModule({ onOpenProfile }: { onOpenProfile: (memberId: string) => 
             return (
               <div
                 key={okr.id}
-                className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/60 p-3.5 space-y-2"
+                className="rounded-xl border p-3.5 space-y-2"
+                style={getAreaCardStyle(okr.areaId ?? "gestao", { emphasis: "medium" })}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -985,18 +1000,21 @@ function GestaoModule({ onOpenProfile }: { onOpenProfile: (memberId: string) => 
             return (
               <div
                 key={area.id}
-                className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/50 p-3 space-y-2"
-                style={{ borderLeftWidth: "3px", borderLeftColor: area.colorHex }}
+                className="zeus-area-card rounded-xl border-[1.5px] p-3 space-y-2"
+                style={getAreaCardStyle(area.id, { emphasis: "strong" })}
               >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold flex items-center gap-1.5">
+                  <span className="font-semibold flex items-center gap-1.5 text-[var(--ink)]">
                     <span
-                      className="h-2 w-2 rounded-full"
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
                       style={{ backgroundColor: area.colorHex }}
                     />
-                    {area.shortCode} · {area.name}
+                    <span className={`rounded border px-1.5 py-0.2 font-mono text-[10px] font-bold ${area.chipClass}`}>
+                      {area.shortCode}
+                    </span>
+                    <span>{area.name}</span>
                   </span>
-                  <span className="font-mono text-[10px] text-[var(--ink-subtle)]">
+                  <span className="font-mono text-[10px] text-[var(--ink-muted)]">
                     {members.length} membro(s)
                   </span>
                 </div>

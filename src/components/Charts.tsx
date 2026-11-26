@@ -312,7 +312,7 @@ export function AreaHealthHeatmap({
         <span className="col-span-3 text-center">Conexões</span>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {rows.map((r) => {
           const linkScore = Math.min(100, r.linksCount * 25);
           const meta = getAreaMeta(r.areaId);
@@ -321,14 +321,18 @@ export function AreaHealthHeatmap({
               key={r.areaId}
               type="button"
               onClick={() => onSelectArea?.(r.areaId)}
-              className="w-full grid grid-cols-12 gap-1.5 items-center text-left hover:opacity-95 transition-opacity"
+              style={{
+                background: `linear-gradient(90deg, ${meta.colorHex}26 0%, ${meta.colorHex}0d 60%, transparent 100%)`,
+                borderColor: `${meta.colorHex}55`,
+              }}
+              className="w-full grid grid-cols-12 gap-1.5 items-center text-left rounded-lg border px-2 py-1 hover:brightness-110 transition-all"
             >
               <span className="col-span-5 text-[11px] font-medium truncate pr-1 flex items-center gap-1.5">
                 <span
                   className="h-2 w-2 rounded-full shrink-0"
                   style={{ backgroundColor: meta.colorHex }}
                 />
-                <span className="font-mono text-[10px]" style={{ color: meta.colorHex }}>
+                <span className={`rounded border px-1 py-0.2 font-mono text-[9px] font-bold ${meta.chipClass}`}>
                   {meta.shortCode}
                 </span>
                 <span className="truncate">{meta.name}</span>

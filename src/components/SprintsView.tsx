@@ -18,6 +18,7 @@ import {
   canApproveInMeeting,
   canManageArea,
   canUpdateTaskStatus,
+  getAreaCardStyle,
   getAreaMeta,
   isTopLeadership,
   PRIORITY_META,
@@ -510,7 +511,6 @@ export function SprintsView({
           </div>
         ) : (
           filteredTasks.map((task) => {
-            const areaMeta = getAreaMeta(task.areaId);
             const assignee = state.members.find((m) => m.id === task.assigneeId);
             const canEditStatus = canUpdateTaskStatus(currentUser, task);
             const canValidate = canManageArea(currentUser, task.areaId);
@@ -522,8 +522,8 @@ export function SprintsView({
             return (
               <div
                 key={task.id}
-                className="zeus-card rounded-xl p-4 space-y-3"
-                style={{ borderLeftWidth: "4px", borderLeftColor: areaMeta.colorHex }}
+                className="zeus-card rounded-xl p-4 space-y-3 border-[1.5px]"
+                style={getAreaCardStyle(task.areaId, { emphasis: "medium" })}
               >
                 {isEditing ? (
                   <div className="space-y-2.5">

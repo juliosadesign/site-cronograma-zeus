@@ -18,7 +18,7 @@ import {
   canApproveInMeeting,
   canManageArea,
   computeFlightReadiness,
-  getAreaMeta,
+  getAreaCardStyle,
   ZEUS_AREAS,
 } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
@@ -432,18 +432,15 @@ export function FlightLessonsView() {
           <div className="space-y-2.5">
             {displayedLessons.map((les) => {
               const sev = SEVERITY_META[les.severity];
-              const areaMeta = getAreaMeta(les.areaId);
               const canEdit = canManageArea(currentUser, les.areaId);
               const isEditing = editingLessonId === les.id;
               return (
                 <div
                   key={les.id}
-                  className={`rounded-lg border p-3.5 space-y-2 ${
-                    les.resolved
-                      ? "border-[var(--hairline)] bg-[var(--surface-2)]/40"
-                      : "border-rose-500/35 bg-rose-500/5"
+                  className={`rounded-xl border-[1.5px] p-3.5 space-y-2 ${
+                    !les.resolved ? "ring-1 ring-rose-500/45" : ""
                   }`}
-                  style={{ borderLeftWidth: "3px", borderLeftColor: areaMeta.colorHex }}
+                  style={getAreaCardStyle(les.areaId, { emphasis: "medium" })}
                 >
                   {isEditing ? (
                     <div className="space-y-2">

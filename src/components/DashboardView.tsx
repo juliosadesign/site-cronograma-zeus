@@ -28,6 +28,7 @@ import {
   computeTeamReportPercentage,
   CORPORATE_AREAS,
   evaluateScheduleHealth,
+  getAreaCardStyle,
   getAreaMeta,
   getMemberLabStatus,
   isDateInPeriod,
@@ -629,29 +630,28 @@ export function DashboardView({
               <Cpu className="h-3.5 w-3.5 text-sky-400" />
               Áreas Técnicas SAE ({TECHNICAL_AREAS.length})
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {TECHNICAL_AREAS.map((area) => (
                 <button
                   key={area.id}
                   type="button"
                   onClick={() => onNavigate("areas")}
-                  className="zeus-card-interactive text-left rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/60 p-2.5 space-y-1"
-                  style={{ borderLeftWidth: "3px", borderLeftColor: area.colorHex }}
+                  className="zeus-area-card text-left rounded-xl border-[1.5px] p-3 space-y-1.5"
+                  style={getAreaCardStyle(area.id, { emphasis: "strong" })}
                 >
                   <div className="flex items-center justify-between gap-1">
                     <span
-                      className="font-mono text-[10px] font-bold"
-                      style={{ color: area.colorHex }}
+                      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold ${area.chipClass}`}
                     >
                       {area.shortCode}
                     </span>
                     <span
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      className="h-3 w-3 rounded-full shrink-0 ring-2 ring-white/25 dark:ring-black/30"
                       style={{ backgroundColor: area.colorHex }}
                     />
                   </div>
-                  <div className="text-xs font-medium truncate">{area.name}</div>
-                  <div className="text-[10px] text-[var(--ink-subtle)] line-clamp-2">
+                  <div className="text-xs font-semibold text-[var(--ink)] truncate">{area.name}</div>
+                  <div className="text-[10px] text-[var(--ink-muted)] line-clamp-2">
                     {area.description}
                   </div>
                 </button>
@@ -664,30 +664,29 @@ export function DashboardView({
               <Briefcase className="h-3.5 w-3.5 text-amber-400" />
               Divisão Corporativa / Empresarial ({CORPORATE_AREAS.length})
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {CORPORATE_AREAS.map((area) => (
                 <button
                   key={area.id}
                   type="button"
                   onClick={() => onNavigate(area.id as NavTab)}
-                  className="zeus-card-interactive w-full text-left rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)]/60 p-2.5 flex items-start gap-2.5"
-                  style={{ borderLeftWidth: "3px", borderLeftColor: area.colorHex }}
+                  className="zeus-area-card w-full text-left rounded-xl border-[1.5px] p-3 flex items-start gap-2.5"
+                  style={getAreaCardStyle(area.id, { emphasis: "strong" })}
                 >
                   <span
-                    className="h-3 w-3 rounded-full shrink-0 mt-0.5"
+                    className="h-3 w-3 rounded-full shrink-0 mt-0.5 ring-2 ring-white/25 dark:ring-black/30"
                     style={{ backgroundColor: area.colorHex }}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-1">
-                      <span className="text-xs font-semibold">{area.name}</span>
+                      <span className="text-xs font-semibold text-[var(--ink)]">{area.name}</span>
                       <span
-                        className="font-mono text-[10px] font-bold"
-                        style={{ color: area.colorHex }}
+                        className={`rounded border px-1.5 py-0.2 font-mono text-[10px] font-bold ${area.chipClass}`}
                       >
                         {area.shortCode}
                       </span>
                     </div>
-                    <div className="text-[10px] text-[var(--ink-subtle)]">{area.description}</div>
+                    <div className="text-[10px] text-[var(--ink-muted)] mt-0.5">{area.description}</div>
                   </div>
                 </button>
               ))}

@@ -265,6 +265,57 @@ export function getAreaMeta(areaId: string): Area {
   );
 }
 
+/** Builds full-square tinted background, 4-sided border and glow from any hex color. */
+export function buildTintedCardStyle(
+  colorHex: string,
+  options?: { active?: boolean; emphasis?: "strong" | "medium" | "subtle" }
+): { background: string; borderColor: string; boxShadow: string } {
+  const emphasis = options?.emphasis ?? "strong";
+  const active = Boolean(options?.active);
+
+  if (emphasis === "subtle") {
+    return {
+      background: `linear-gradient(160deg, ${colorHex}1a 0%, ${colorHex}08 55%, transparent 100%)`,
+      borderColor: `${colorHex}66`,
+      boxShadow: `inset 0 1px 0 ${colorHex}33`,
+    };
+  }
+
+  if (emphasis === "medium") {
+    return active
+      ? {
+          background: `linear-gradient(135deg, ${colorHex}36 0%, ${colorHex}1c 100%)`,
+          borderColor: `${colorHex}ee`,
+          boxShadow: `0 0 0 1px ${colorHex}99, inset 0 1px 0 ${colorHex}55`,
+        }
+      : {
+          background: `linear-gradient(135deg, ${colorHex}22 0%, ${colorHex}10 65%, ${colorHex}08 100%)`,
+          borderColor: `${colorHex}78`,
+          boxShadow: `inset 0 1px 0 ${colorHex}38`,
+        };
+  }
+
+  return active
+    ? {
+        background: `linear-gradient(135deg, ${colorHex}42 0%, ${colorHex}24 55%, ${colorHex}14 100%)`,
+        borderColor: colorHex,
+        boxShadow: `0 0 0 1px ${colorHex}cc, 0 10px 26px -8px ${colorHex}55, inset 0 1px 0 ${colorHex}66`,
+      }
+    : {
+        background: `linear-gradient(135deg, ${colorHex}30 0%, ${colorHex}18 60%, ${colorHex}0e 100%)`,
+        borderColor: `${colorHex}99`,
+        boxShadow: `inset 0 1px 0 ${colorHex}45, 0 4px 14px -8px ${colorHex}38`,
+      };
+}
+
+/** Returns full-card tinted style mapped to the area's unique colorHex. */
+export function getAreaCardStyle(
+  areaId: string,
+  options?: { active?: boolean; emphasis?: "strong" | "medium" | "subtle" }
+): { background: string; borderColor: string; boxShadow: string } {
+  return buildTintedCardStyle(getAreaMeta(areaId).colorHex, options);
+}
+
 export function getMemberAreaRole(member: Member, areaId: string): AreaRole | null {
   const fromMemberships = member.areaMemberships?.find((m) => m.areaId === areaId);
   if (fromMemberships) return fromMemberships.role;
