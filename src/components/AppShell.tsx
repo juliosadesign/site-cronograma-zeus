@@ -28,7 +28,7 @@ import {
   Search,
   ShieldCheck,
   Sun,
-  Trophy,
+  Users,
   X,
   Zap,
 } from "lucide-react";
@@ -145,7 +145,7 @@ export function AppShell({
     { id: "archive", label: "Acervo & Relatórios", shortLabel: "Acervo", icon: Archive },
     { id: "flight", label: "Voo & Lições SAE", shortLabel: "Voo", icon: ClipboardCheck },
     { id: "calendar", label: "Calendário", shortLabel: "Agenda", icon: Calendar },
-    { id: "ranking", label: "Ranking & Perfis", shortLabel: "Ranking", icon: Trophy },
+    { id: "ranking", label: "Equipe & Perfis", shortLabel: "Equipe", icon: Users },
     { id: "meetings", label: "Reuniões", shortLabel: "Chamada", icon: CalendarCheck2 },
   ];
 

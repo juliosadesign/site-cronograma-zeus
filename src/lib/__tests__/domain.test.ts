@@ -14,7 +14,6 @@ import {
   computeFinanceSummary,
   computeFlightReadiness,
   computeForecastTarget,
-  computeMemberPoints,
   computeProjectedReportScore,
   computeReportPercentage,
   computeTeamReportPercentage,
@@ -30,6 +29,7 @@ import {
   getReportOverride,
   getReportOverrideKey,
   isDateInPeriod,
+  isMemberAssignedToTask,
   isWithinLabSlots,
   parseFlexibleDateInput,
   projectTeamProgressAt,
@@ -127,7 +127,7 @@ assert.equal(canViewPrivateArea(calouroAero, "aerodinamica"), true);
 assert.equal(canViewPrivateArea(calouroAero, "financeiro"), false);
 assert.equal(canAccessFinance(calouroAero), false);
 
-// Ranking ponderado: somente tarefas com meetingApproved === true contam pontos
+// Vínculo de responsável em tarefas (prioridades não geram pontuação de membros)
 const tasks: SprintTask[] = [
   {
     id: "t1", sprintId: "s1", areaId: "aerodinamica", assigneeId: "cal", createdBy: "dir",
@@ -145,7 +145,7 @@ const tasks: SprintTask[] = [
     directorValidated: true, meetingApproved: true, impactedAreaIds: [], createdAt: "2026-01-01",
   },
 ];
-assert.equal(computeMemberPoints("cal", tasks), 6, "4 (crítica) + 2 (média) = 6; tarefa não aprovada em reunião não conta");
+assert.equal(isMemberAssignedToTask("cal", tasks[0]), true);
 assert.equal(canUpdateTaskStatus(calouroAero, tasks[0]), true);
 assert.equal(canUpdateTaskStatus(diretorAero, tasks[0]), true);
 
@@ -528,8 +528,8 @@ assert.ok(
     sharedTask.coAssigneeIds?.includes("ghost-richeldson"),
   "Citação 'Thainá e Shell' deve creditar ambos os participantes"
 );
-assert.equal(computeMemberPoints("ghost-thaina", importedOverlayState.tasks), 3);
-assert.equal(computeMemberPoints("ghost-richeldson", importedOverlayState.tasks), 3);
+assert.equal(isMemberAssignedToTask("ghost-thaina", sharedTask), true);
+assert.equal(isMemberAssignedToTask("ghost-richeldson", sharedTask), true);
 
 const todosAeroTask = importedOverlayState.tasks.find((t) => t.id === "imp-todos-aero")!;
 assert.ok(
@@ -537,8 +537,8 @@ assert.ok(
     todosAeroTask.coAssigneeIds?.includes("ghost-mariany"),
   "Citação 'Todos' em Aerodinâmica deve creditar toda a equipe da área"
 );
-assert.equal(computeMemberPoints("ghost-jullya", importedOverlayState.tasks), 2);
-assert.equal(computeMemberPoints("ghost-mariany", importedOverlayState.tasks), 2);
+assert.equal(isMemberAssignedToTask("ghost-jullya", todosAeroTask), true);
+assert.equal(isMemberAssignedToTask("ghost-mariany", todosAeroTask), true);
 
 const uncitedPlantasTask = importedOverlayState.tasks.find((t) => t.id === "imp-plantas-uncited")!;
 assert.notEqual(
@@ -548,9 +548,9 @@ assert.notEqual(
 );
 
 assert.equal(
-  computeMemberPoints(dev.id, importedOverlayState.tasks),
-  2,
-  "Júlio deve pontuar apenas pelas tarefas que realmente citam Júlio (2 pts de imp-julio-mkt)"
+  importedOverlayState.tasks.filter((t) => isMemberAssignedToTask(dev.id, t)).length,
+  1,
+  "Júlio deve ficar apenas com a tarefa imp-julio-mkt que realmente cita Júlio"
 );
 
 console.log("All Zeus domain & RBAC tests passed!");

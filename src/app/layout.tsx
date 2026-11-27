@@ -16,7 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Zeus AeroDesign — Gestão de Sprints",
   description:
-    "Plataforma de sprints, áreas, relatórios SAE, ranking anual e presença da Equipe Zeus AeroDesign (UEMA).",
+    "Plataforma de sprints, áreas, relatórios SAE, perfis da equipe e presença da Equipe Zeus AeroDesign (UEMA).",
   manifest: "/manifest.json",
   icons: {
     icon: "/icon.svg",

@@ -1395,7 +1395,7 @@ export function SprintsView({
                   >
                     {(Object.keys(PRIORITY_META) as Priority[]).map((p) => (
                       <option key={p} value={p}>
-                        {PRIORITY_META[p].label} ({PRIORITY_META[p].points} pts)
+                        {PRIORITY_META[p].label} · {PRIORITY_META[p].eisenhower}
                       </option>
                     ))}
                   </select>

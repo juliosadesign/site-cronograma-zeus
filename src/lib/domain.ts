@@ -203,29 +203,25 @@ export const ROLE_META: Record<Role, { label: string; badgeClass: string; rankOr
   },
 };
 
-export const PRIORITY_META: Record<Priority, { label: string; eisenhower: string; points: number; badgeClass: string }> = {
+export const PRIORITY_META: Record<Priority, { label: string; eisenhower: string; badgeClass: string }> = {
   critical: {
     label: "Crítica",
     eisenhower: "Importante + Urgente",
-    points: 4,
     badgeClass: "bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30",
   },
   high: {
     label: "Alta",
     eisenhower: "Importante",
-    points: 3,
     badgeClass: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
   },
   medium: {
     label: "Média",
     eisenhower: "Urgente",
-    points: 2,
     badgeClass: "bg-sky-500/15 text-sky-600 dark:text-sky-300 border-sky-500/30",
   },
   low: {
     label: "Baixa",
     eisenhower: "Rotina",
-    points: 1,
     badgeClass: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border-zinc-500/25",
   },
 };
@@ -382,16 +378,6 @@ export function isMemberAssignedToTask(memberId: string, task: SprintTask): bool
 export function canUpdateTaskStatus(user: Member, task: SprintTask): boolean {
   if (user.accountStatus !== "approved") return false;
   return isMemberAssignedToTask(user.id, task) || canManageArea(user, task.areaId);
-}
-
-export function computeMemberPoints(memberId: string, tasks: SprintTask[]): number {
-  let total = 0;
-  for (const task of tasks) {
-    if (isMemberAssignedToTask(memberId, task) && task.meetingApproved) {
-      total += PRIORITY_META[task.priority].points;
-    }
-  }
-  return total;
 }
 
 export function getReportOverrideKey(seasonYear: number, areaId: string): string {

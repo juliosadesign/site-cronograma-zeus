@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { computeAttendanceStats, computeMemberPoints, isMemberAssignedToTask, ROLE_META } from "@/lib/domain";
+import { computeAttendanceStats, isMemberAssignedToTask, ROLE_META } from "@/lib/domain";
 import { useZeus } from "@/lib/store";
 import { AreaChip, RoleBadge } from "./Badge";
 import { MemberAvatar } from "./MemberAvatar";
@@ -33,25 +33,27 @@ export function RankingView({
 
   const ranked = approvedMembers
     .map((m) => {
-      const points = computeMemberPoints(m.id, scopedTasks);
       const myTasks = scopedTasks.filter((t) => isMemberAssignedToTask(m.id, t));
       const approvedTasks = myTasks.filter((t) => t.meetingApproved);
       const att = computeAttendanceStats(m.id, scopedAttendance);
-      return { member: m, points, myTasks, approvedTasks, att };
+      return { member: m, myTasks, approvedTasks, att };
     })
     .sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      if (b.att.rate !== a.att.rate) return b.att.rate - a.att.rate;
-      return ROLE_META[a.member.role].rankOrder - ROLE_META[b.member.role].rankOrder;
+      const roleDiff = ROLE_META[a.member.role].rankOrder - ROLE_META[b.member.role].rankOrder;
+      if (roleDiff !== 0) return roleDiff;
+      if (b.approvedTasks.length !== a.approvedTasks.length) {
+        return b.approvedTasks.length - a.approvedTasks.length;
+      }
+      return a.member.fullName.localeCompare(b.member.fullName, "pt-BR");
     });
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Ranking & Perfis da Equipe</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Equipe & Perfis</h1>
           <p className="text-xs text-[var(--ink-subtle)]">
-            Pontuação ponderada pelas tarefas aprovadas em reunião (Crítica 4p · Alta 3p · Média 2p · Baixa 1p). Clique em qualquer membro para abrir o perfil.
+            Visão geral dos integrantes da equipe, áreas vinculadas, entregas nas sprints e presença em reuniões. Clique em qualquer membro para abrir o perfil.
           </p>
         </div>
 
@@ -82,25 +84,20 @@ export function RankingView({
           <table className="w-full text-left text-xs">
             <thead className="border-b border-[var(--hairline)] bg-[var(--surface-2)] text-[var(--ink-subtle)]">
               <tr>
-                <th className="py-2.5 px-3 font-medium">#</th>
                 <th className="py-2.5 px-3 font-medium">Membro</th>
                 <th className="py-2.5 px-3 font-medium">Patente</th>
                 <th className="py-2.5 px-3 font-medium">Áreas</th>
-                <th className="py-2.5 px-3 font-medium text-right">Sprints Aprov.</th>
+                <th className="py-2.5 px-3 font-medium text-right">Entregas Aprov.</th>
                 <th className="py-2.5 px-3 font-medium text-right">Presença</th>
-                <th className="py-2.5 px-3 font-medium text-right">Pontos</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--hairline)]">
-              {ranked.map((entry, idx) => (
+              {ranked.map((entry) => (
                 <tr
                   key={entry.member.id}
                   onClick={() => onOpenProfile(entry.member.id)}
                   className="cursor-pointer hover:bg-[var(--surface-2)]/60 transition-colors"
                 >
-                  <td className="py-3 px-3 font-mono font-semibold text-amber-500">
-                    {idx + 1}º
-                  </td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2.5">
                       <MemberAvatar member={entry.member} size="sm" />
@@ -138,9 +135,6 @@ export function RankingView({
                   </td>
                   <td className="py-3 px-3 text-right font-mono">
                     {entry.att.present}/{entry.att.total} ({entry.att.rate}%)
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono font-semibold">
-                    {entry.points} pts
                   </td>
                 </tr>
               ))}

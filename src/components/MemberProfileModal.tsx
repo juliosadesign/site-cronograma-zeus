@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Award, CalendarCheck, Camera, CheckCheck, Clock, MapPin, Plus, Save, Trash2, X } from "lucide-react";
+import { CalendarCheck, Camera, CheckCheck, Clock, ListChecks, MapPin, Plus, Save, Trash2, X } from "lucide-react";
 import {
   computeAttendanceStats,
-  computeMemberPoints,
   getAreaName,
   getMemberAreaRole,
   isMemberAssignedToTask,
@@ -67,7 +66,6 @@ export function MemberProfileModal({
 
   const canEdit =
     !member.isGhost && (currentUser.id === member.id || isTopLeadership(currentUser.role));
-  const points = computeMemberPoints(member.id, state.tasks);
   const myTasks = state.tasks.filter((t) => isMemberAssignedToTask(member.id, t));
   const approvedTasks = myTasks.filter((t) => t.meetingApproved);
   const att = computeAttendanceStats(member.id, state.attendance);
@@ -343,9 +341,9 @@ export function MemberProfileModal({
         <div className="grid grid-cols-3 gap-3">
           <div className="zeus-surface-2 rounded-lg p-3 border border-[var(--hairline)]">
             <div className="text-[11px] text-[var(--ink-subtle)] flex items-center gap-1">
-              <Award className="h-3.5 w-3.5 text-amber-500" /> Pontos no Ano
+              <ListChecks className="h-3.5 w-3.5 text-sky-400" /> Tarefas Atribuídas
             </div>
-            <div className="mt-1 font-mono text-lg font-semibold">{points} pts</div>
+            <div className="mt-1 font-mono text-lg font-semibold">{myTasks.length}</div>
           </div>
           <div className="zeus-surface-2 rounded-lg p-3 border border-[var(--hairline)]">
             <div className="text-[11px] text-[var(--ink-subtle)] flex items-center gap-1">

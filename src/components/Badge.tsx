@@ -55,11 +55,11 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
   const meta = PRIORITY_META[priority];
   return (
     <span
-      title={`${meta.eisenhower} (${meta.points} pts)`}
+      title={meta.eisenhower}
       className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-medium ${meta.badgeClass}`}
     >
       <Sparkles className="h-2.5 w-2.5" />
-      {meta.label} · {meta.points}p
+      {meta.label}
     </span>
   );
 }

@@ -53,7 +53,7 @@ export function CommandPalette({
       { id: "archive", label: "Acervo & Relatórios", subtitle: "Documentos históricos Teams/Drive" },
       { id: "flight", label: "Voo & Lições SAE", subtitle: "Checklist pré-voo e falhas passadas" },
       { id: "calendar", label: "Calendário SAE", subtitle: "Marcos e contagem regressiva" },
-      { id: "ranking", label: "Ranking & Perfis", subtitle: "Pontuação anual da equipe" },
+      { id: "ranking", label: "Equipe & Perfis", subtitle: "Membros, áreas, entregas e presença" },
       { id: "meetings", label: "Reuniões & Modo Quinzenal", subtitle: "Chamada, aprovações e ata" },
       { id: "marketing", label: "Corporativo · Marketing", subtitle: "Campanhas, mídia e patrocinadores" },
       { id: "gestao", label: "Corporativo · Gestão", subtitle: "OKRs e alocação da equipe" },
